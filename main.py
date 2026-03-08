@@ -1,6 +1,7 @@
 import os, shutil, asyncio
 from uagents import Agent, Bureau, Context
 from uagents.network import get_ledger
+from uagents.crypto import Identity
 
 # --- ⚙️ CONFIGURATION ---
 BANKER_NAME = "AlphaBeta-Oracle-1"
@@ -27,10 +28,10 @@ async def find_funded_index(seed):
     print("🔍 Scanning for 9.6 FET on Mainnet...")
     for i in range(5):
         try:
-            # We create a temporary agent to use its internal wallet derivation
-            temp_agent = Agent(seed=seed, index=i)
-            # Fetch.ai agents use the 'fetch1' prefix for their wallets
-            wallet_addr = str(temp_agent.wallet.address())
+            # Universal way to get identity with an index
+            ident = Identity.from_seed(seed, i)
+            # Use the agent's internal logic to get the ledger-ready address
+            wallet_addr = ident.address
             
             bal_raw = ledger.query_bank_balance(wallet_addr)
             bal = float(bal_raw) / 10**18
@@ -63,10 +64,15 @@ for i, seed in enumerate(SEEDS):
     role = ["Oracle", "Notary", "Maker", "Broker"][min(i // 5, 3)]
     a_name = f"AlphaBeta-{role}-{i+1}"
     
-    # Initialize the agent with the index where we found the funds
-    agent_obj = Agent(name=a_name, seed=seed, index=found_idx)
-    w_addr = str(agent_obj.wallet.address())
+    # Create the identity manually to avoid the 'index' keyword error
+    agent_identity = Identity.from_seed(seed, found_idx)
     
+    # Initialize agent using the identity object
+    agent_obj = Agent(name=a_name, seed=seed)
+    # Force the agent to use our derived identity
+    agent_obj._identity = agent_identity
+    
+    w_addr = agent_identity.address
     register_handlers(agent_obj, a_name, w_addr)
     bureau.add(agent_obj)
 
