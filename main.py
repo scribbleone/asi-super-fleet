@@ -3,7 +3,6 @@ from uagents import Agent, Bureau, Context
 from uagents.crypto import Identity
 
 # --- ⚙️ MASTER CONFIGURATION ---
-# This is your funded Banker address: fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x
 MASTER_WALLET = "fetch1k6qg2lv5jpt3sdy66g5gn3f63m6e9wesdz99rm" 
 BANKER_NAME = "AlphaBeta-Oracle-1"
 
@@ -25,61 +24,62 @@ SEEDS = [
 
 bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
 
-# OFFLINE ADDRESS CALCULATION (Using Index 0 to match your funded wallet)
-ALL_FETCH_ADDRS = []
+# OFFLINE WALLET ADDRESS CALCULATION (Using Index 0)
+# We specifically get the .address (fetch1...) for blockchain transactions
+ALL_WALLETS = []
 for s in SEEDS:
     ident = Identity.from_seed(s, 0)
-    ALL_FETCH_ADDRS.append(ident.address)
+    ALL_WALLETS.append(ident.address)
 
-def register_handlers(target_agent, name, my_addr):
-    # Capture the actual wallet object to prevent 'str' errors
-    agent_wallet = target_agent.wallet
+def register_handlers(target_agent, name, my_wallet_addr):
+    agent_wallet_obj = target_agent.wallet
 
     @target_agent.on_event("startup")
     async def startup_audit(ctx: Context):
         try:
-            bal_raw = ctx.ledger.query_bank_balance(my_addr)
+            bal_raw = ctx.ledger.query_bank_balance(my_wallet_addr)
             bal = float(bal_raw) / 10**18
             status = "✅ READY" if bal >= 0.05 else "❌ NO FUEL"
             
             # DASHBOARD DISPLAY
-            print(f"[{status}] {name:20} | {bal:.4f} FET | {my_addr[:15]}...")
+            print(f"[{status}] {name:20} | {bal:.4f} FET | {my_wallet_addr[:15]}...")
 
             if name == BANKER_NAME:
                 if bal < 0.2:
                     print(f"🚨 ALERT: Banker {name} low on funds ({bal:.4f} FET)!")
                 else:
                     print(f"⛽ Banker {name} online. Checking fleet fuel...")
-                    for target in ALL_FETCH_ADDRS:
-                        if target != my_addr:
-                            t_bal = float(ctx.ledger.query_bank_balance(target)) / 10**18
+                    for target_wallet in ALL_WALLETS:
+                        if target_wallet != my_wallet_addr:
+                            t_bal = float(ctx.ledger.query_bank_balance(target_wallet)) / 10**18
                             if t_bal < 0.05:
-                                print(f"💸 Fueling {target[:12]} from Banker...")
-                                await ctx.ledger.send_tokens(agent_wallet, target, int(0.1 * 10**18), "FET")
+                                print(f"💸 Fueling {target_wallet[:15]}... from Banker")
+                                # Use target_wallet (fetch1...) instead of agent address
+                                await ctx.ledger.send_tokens(agent_wallet_obj, target_wallet, int(0.1 * 10**18), "FET")
         except Exception as e:
             print(f"⚠️ {name} Ledger Error: {e}")
 
     @target_agent.on_interval(period=3600.0)
     async def sweep(ctx: Context):
         try:
-            bal = float(ctx.ledger.query_bank_balance(my_addr)) / 10**18
+            bal = float(ctx.ledger.query_bank_balance(my_wallet_addr)) / 10**18
             if bal > 5.0:
                 sweep_val = int((bal - 0.5) * 10**18)
-                await ctx.ledger.send_tokens(agent_wallet, MASTER_WALLET, sweep_val, "FET")
+                await ctx.ledger.send_tokens(agent_wallet_obj, MASTER_WALLET, sweep_val, "FET")
                 print(f"🚀 {name} SWEPT to Vault.")
         except:
             pass
 
 # BUILD FLEET
 for i, seed in enumerate(SEEDS):
-    # Standardizing naming logic
     role = ["Oracle", "Notary", "Maker", "Broker"][min(i // 5, 3)]
     a_name = f"AlphaBeta-{role}-{i+1}"
     
     agent_obj = Agent(name=a_name, seed=seed)
-    current_addr = str(agent_obj.wallet.address())
+    # Get the fetch1... address for this agent specifically
+    wallet_addr = str(agent_obj.wallet.address())
     
-    register_handlers(agent_obj, a_name, current_addr)
+    register_handlers(agent_obj, a_name, wallet_addr)
     bureau.add(agent_obj)
 
 if __name__ == "__main__":
