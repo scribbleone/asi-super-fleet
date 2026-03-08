@@ -1,7 +1,7 @@
 import os, shutil, asyncio
 from uagents import Agent, Bureau, Context
-from uagents.network import get_ledger
-from uagents.crypto import Identity
+from uagents.network import get_ledger, get_mainnet_prefix
+from uagents.crypto import Identity, encode_bech32
 
 # --- ⚙️ CONFIGURATION ---
 BANKER_NAME = "AlphaBeta-Oracle-1"
@@ -22,37 +22,26 @@ SEEDS = [
 ]
 
 bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
-ledger = get_ledger()
+ledger = get_ledger() # This defaults to Mainnet
 
 async def find_funded_index(seed):
-    """Scans indices for funds by forcing fetch1 address format."""
-    print("🔍 Scanning seed indices for funds...")
-    for i in range(10):
+    print("🔍 Scanning Mainnet for the 9.6 FET...")
+    # We will test a few different ways the wallet might be derived
+    for i in range(5):
         ident = Identity.from_seed(seed, i)
+        # Convert to the 'fetch1' format the ledger actually understands
+        fetch_addr = encode_bech32("fetch", ident.address_bytes)
         
-        # This is the critical fix: manually deriving the fetch1 address
-        # We use the agent's internal wallet logic to get the correct prefix
-        temp_agent = Agent(seed=seed, index=i) if hasattr(Agent, 'index') else Agent(seed=seed)
-        wallet_addr = str(temp_agent.wallet.address())
-        
-        # If it still starts with 'agent', we strip and re-prefix or use the raw address
-        if wallet_addr.startswith("agent"):
-            # The ledger needs the fetch1 version of the same public key
-            from uagents.crypto import encode_bech32
-            raw_address = ident.address_bytes
-            wallet_addr = encode_bech32("fetch", raw_address)
-
         try:
-            bal_raw = ledger.query_bank_balance(wallet_addr)
+            bal_raw = ledger.query_bank_balance(fetch_addr)
             bal = float(bal_raw) / 10**18
-            print(f"  Index {i}: {wallet_addr} | {bal:.4f} FET")
+            print(f"  [Index {i}] Address: {fetch_addr} | Bal: {bal:.4f} FET")
             
             if bal > 0.1:
-                print(f"⭐ SUCCESS! FOUND {bal:.4f} FET AT INDEX {i}")
+                print(f"⭐ FOUND FUNDS AT INDEX {i}!")
                 return i
         except Exception as e:
-            print(f"  Index {i} ({wallet_addr[:10]}...): Ledger rejected request.")
-            
+            print(f"  [Index {i}] Query failed: {e}")
     return 0
 
 def register_handlers(target_agent, name, wallet_addr):
@@ -61,28 +50,28 @@ def register_handlers(target_agent, name, wallet_addr):
         try:
             bal_raw = ledger.query_bank_balance(wallet_addr)
             bal = float(bal_raw) / 10**18
-            status = "✅ READY" if bal >= 0.05 else "❌ NO FUEL"
+            status = "✅ READY" if bal >= 0.01 else "❌ NO FUEL"
             print(f"[{status}] {name:20} | {bal:.4f} FET | {wallet_addr[:15]}...")
-        except:
-            pass
+        except: pass
 
-# 1. RUN THE SCANNER
+# 1. FIND THE MONEY
 loop = asyncio.get_event_loop()
-funded_index = loop.run_until_complete(find_funded_index(SEEDS[0]))
+found_idx = loop.run_until_complete(find_funded_index(SEEDS[0]))
 
-# 2. BUILD FLEET
+# 2. START THE FLEET
 for i, seed in enumerate(SEEDS):
     role = ["Oracle", "Notary", "Maker", "Broker"][min(i // 5, 3)]
     a_name = f"AlphaBeta-{role}-{i+1}"
     
-    agent_identity = Identity.from_seed(seed, funded_index)
-    agent_obj = Agent(name=a_name, identity=agent_identity)
-    
-    # Use the encoded fetch address for our internal tracking/audits
-    from uagents.crypto import encode_bech32
-    w_addr = encode_bech32("fetch", agent_identity.address_bytes)
-    
-    register_handlers(agent_obj, a_name, w_addr)
+    # Correcting the initialization: use the seed and the correct index
+    agent_obj = Agent(name=a_name, seed=seed) 
+    # We manually override the identity if the index was not 0
+    if found_idx != 0:
+        new_ident = Identity.from_seed(seed, found_idx)
+        agent_obj._identity = new_ident
+        
+    fetch_addr = encode_bech32("fetch", agent_obj.identity.address_bytes)
+    register_handlers(agent_obj, a_name, fetch_addr)
     bureau.add(agent_obj)
 
 if __name__ == "__main__":
