@@ -1,48 +1,45 @@
-import os, asyncio, requests
-from uagents import Agent, Context, Model
-from cosmpy.aerial.client import LedgerClient, NetworkConfig
+import os
+import asyncio
+import time
+from fetchai.ledger.api import LedgerApi
+from fetchai.ledger.crypto import Entity
 
-print("--- ALPHA SUPER-AGENT: MAINNET ACTIVE ---")
+async def audit_all_seeds():
+    # 1. The List of Secrets we are hunting for
+    seeds_to_check = ["AGENT_SEED", "AGENT_SEED_GAS", "MASTER_WALLET_SEED"]
+    
+    # 2. Setup the Ledger (Mainnet)
+    ledger = LedgerApi('mainnet.fetch.ai', 443)
+    start_time = time.time()
+    
+    print("--- 🛡️ ALPHA MULTI-AUDIT STARTING ---")
+    
+    for seed_name in seeds_to_check:
+        seed_value = os.getenv(seed_name)
+        
+        if not seed_value:
+            print(f"⚠️ {seed_name}: Not found in GitHub Secrets.")
+            continue
+            
+        try:
+            # Create the entity from the seed
+            entity = Entity.from_seed(seed_value)
+            address = str(entity.address)
+            balance = ledger.query_funds(entity)
+            
+            print(f"✅ FOUND {seed_name}")
+            print(f"   📍 Address: {address}")
+            print(f"   💰 Balance: {balance / 10**18} FET") # Converting from 'atto' to FET
+        except Exception as e:
+            print(f"❌ Error auditing {seed_name}: {str(e)}")
 
-# 1. Connect to Fetch.ai Mainnet to see your 9.6 FET
-ledger_client = LedgerClient(NetworkConfig.fetchai_mainnet())
-
-# 2. Pull Secrets from GitHub
-API_KEY = os.environ.get("CG_API_KEY")
-AGENT_SEED = os.environ.get("AGENT_SEED") 
-BETA_LEAD_ADDRESS = "fetch1p079k6sq95v40l08msfms8p62v9g9tjsu5l9re"
-
-class MarketData(Model): price: float; trend: str
-
-# 3. Initialize Agent with YOUR real seed
-Manager = Agent(
-    name="Alpha_Manager", 
-    seed=AGENT_SEED, 
-    port=8000, 
-    endpoint=["http://127.0.0.1:8000/submit"]
-)
-
-@Manager.on_interval(period=300.0)
-async def fetch_and_audit(ctx: Context):
-    # Check your real balance first
-    try:
-        query_bal = ledger_client.query_bank_balance(ctx.address)
-        actual_fet = query_bal / 1e18 # Convert from 'atto' to FET
-        print(f"🏦 WALLET: {ctx.address}")
-        print(f"💰 BALANCE: {actual_fet} FET")
-    except Exception as e:
-        print(f"⚠️ Ledger Busy: {e}")
-
-    # Fetching real FET (ASI) price using your specific Key
-    url = f"https://api.coingecko.com/api/v3/simple/price?ids=fetch-ai&vs_currencies=usd&x_cg_demo_api_key={API_KEY}"
-    try:
-        r = requests.get(url).json()
-        price = r['fetch-ai']['usd']
-        print(f"💹 MARKET PRICE: ${price} USD")
-        await ctx.send(BETA_LEAD_ADDRESS, MarketData(price=price, trend="live"))
-    except Exception as e:
-        print(f"⚠️ API Error: {e}")
+    print(f"--- 🏁 AUDIT COMPLETE (Took {int(time.time() - start_time)}s) ---")
+    print("Shutting down to save GitHub minutes...")
 
 if __name__ == "__main__":
-    Manager.run()
-  
+    # Run the audit with a 120-second hard timeout
+    try:
+        asyncio.run(asyncio.wait_for(audit_all_seeds(), timeout=120))
+    except asyncio.TimeoutError:
+        print("⏰ Timeout reached. Closing agent.")
+        
