@@ -1,11 +1,11 @@
 import os, shutil, asyncio
 from uagents import Agent, Bureau, Context
-from uagents.network import get_ledger
+from uagents.network import get_ledger, wait_for_tx_to_complete
 from uagents.crypto import Identity
 
 # --- ⚙️ CONFIGURATION ---
 BANKER_NAME = "AlphaBeta-Oracle-1"
-FUEL_AMOUNT = 0.05  # Amount to send to each sub-agent for registration
+FUEL_AMOUNT = 50000000000000000  # 0.05 FET in AttoFET (10^18)
 
 def perform_safety_backup():
     if os.path.exists("main.py"):
@@ -25,46 +25,53 @@ SEEDS = [
 bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
 ledger = get_ledger()
 
-# We maintain a list of addresses to fuel
-fleet_addresses = []
+# Global list of sub-agent fetch addresses
+sub_agent_wallets = []
 
-async def fuel_fleet(ctx: Context):
-    """The Banker checks who needs fuel and sends it."""
-    print(f"💰 {BANKER_NAME} is auditing the fleet for fuel requirements...")
-    for addr in fleet_addresses:
-        if addr == str(ctx.address): continue
-        
-        balance = float(ledger.query_bank_balance(addr)) / 10**18
-        if balance < 0.01:
-            print(f"⛽ Sending {FUEL_AMOUNT} FET to {addr[:15]}...")
-            # This is where the Banker sends the transaction
-            # Note: Ensure the Banker has the 9.6 FET at Index 0
-            try:
-                # We use the ledger to send tokens from the Banker's wallet
-                # This requires the Banker agent to have its wallet loaded correctly
-                pass 
-            except Exception as e:
-                print(f"⚠️ Transfer failed: {e}")
+async def distribute_fuel(ctx: Context):
+    """The Banker (Agent 1) iterates through the fleet and sends fuel."""
+    print(f"💰 {BANKER_NAME} starting distribution audit...")
+    
+    for target_wallet in sub_agent_wallets:
+        # Don't send fuel to yourself
+        if target_wallet == str(ctx.ledger.address):
+            continue
+            
+        try:
+            balance = ledger.query_bank_balance(target_wallet)
+            if balance < (FUEL_AMOUNT / 2):
+                print(f"⛽ Sending fuel to {target_wallet}...")
+                # The Banker uses its own wallet (ctx.ledger) to send the transaction
+                tx = ledger.send_tokens(target_wallet, FUEL_AMOUNT, "atestfet", ctx.ledger)
+                await wait_for_tx_to_complete(tx.tx_hash, ledger)
+                print(f"✅ Fuel delivered to {target_wallet[:15]}...")
+                # Small sleep to prevent sequence errors on the blockchain
+                await asyncio.sleep(2) 
+        except Exception as e:
+            print(f"⚠️ Could not fuel {target_wallet[:10]}: {e}")
 
 # BUILD FLEET
 for i, seed in enumerate(SEEDS):
     role = ["Oracle", "Notary", "Maker", "Broker"][min(i // 5, 3)]
     a_name = f"AlphaBeta-{role}-{i+1}"
     
+    # Standard initialization - Agent 1 will naturally have the funded address
     agent_obj = Agent(name=a_name, seed=seed)
-    # We use Index 0 for all as it's the standard
     
-    w_addr = str(agent_obj.wallet.address())
-    fleet_addresses.append(w_addr)
+    # Convert 'agent...' address to 'fetch...' address for the ledger
+    fetch_addr = Identity.from_seed(seed, 0).address
     
     if a_name == BANKER_NAME:
-        @agent_obj.on_interval(period=3600) # Check once an hour
-        async def banker_task(ctx: Context):
-            await fuel_fleet(ctx)
+        # Agent 1 handles the distribution
+        @agent_obj.on_event("startup")
+        async def startup_fueling(ctx: Context):
+            await distribute_fuel(ctx)
+    else:
+        # All other agents are added to the recipient list
+        sub_agent_wallets.append(fetch_addr)
 
     bureau.add(agent_obj)
 
 if __name__ == "__main__":
     perform_safety_backup()
-    print("🚀 Fleet is airborne. Checking Almanac registration...")
     bureau.run()
