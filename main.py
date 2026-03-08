@@ -1,86 +1,47 @@
-import os, shutil, asyncio
-from uagents import Agent, Bureau, Context
+import asyncio
 from uagents.network import get_ledger, wait_for_tx_to_complete
 from uagents.crypto import Identity
 
-# --- ⚙️ CONFIGURATION ---
-BANKER_NAME = "AlphaBeta-Oracle-1"
-FUEL_AMOUNT = 50000000000000000  # 0.05 FET
-
-def perform_safety_backup():
-    if os.path.exists("main.py"):
-        shutil.copy("main.py", "main.py.backup")
-        print("🛡️ Safety backup created.")
-
-SEEDS = [
-    "alpha_prime_v26_secure_881", "alpha_nexus_v26_secure_102", "alpha_orbit_v26_secure_554",
-    "alpha_pulse_v26_secure_923", "alpha_glory_v26_secure_317", "alpha_delta_v26_secure_441",
-    "alpha_titan_v26_secure_609", "alpha_solar_v26_secure_228", "alpha_zenith_v26_secure_773",
-    "alpha_matrix_v26_secure_415", "beta_prime_v26_secure_119", "beta_nexus_v26_secure_802",
-    "beta_orbit_v26_secure_334", "beta_pulse_v26_secure_772", "beta_glory_v26_secure_515",
-    "beta_delta_v26_secure_661", "beta_titan_v26_secure_209", "beta_solar_v26_secure_882",
-    "beta_zenith_v26_secure_337", "beta_matrix_v26_secure_551"
+# --- ⚙️ FUNDING SETUP ---
+# Your Banker Seed (Oracle-1)
+BANKER_SEED = "alpha_prime_v26_secure_881"
+# The other 19 seeds to fund
+SUB_SEEDS = [
+    "alpha_nexus_v26_secure_102", "alpha_orbit_v26_secure_554", "alpha_pulse_v26_secure_923", 
+    "alpha_glory_v26_secure_317", "alpha_delta_v26_secure_441", "alpha_titan_v26_secure_609", 
+    "alpha_solar_v26_secure_228", "alpha_zenith_v26_secure_773", "alpha_matrix_v26_secure_415", 
+    "beta_prime_v26_secure_119", "beta_nexus_v26_secure_802", "beta_orbit_v26_secure_334", 
+    "beta_pulse_v26_secure_772", "beta_glory_v26_secure_515", "beta_delta_v26_secure_661", 
+    "beta_titan_v26_secure_209", "beta_solar_v26_secure_882", "beta_zenith_v26_secure_337", 
+    "beta_matrix_v26_secure_551"
 ]
 
-bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
+FUEL_AMOUNT = 50000000000000000  # 0.05 FET
 ledger = get_ledger()
-sub_agent_wallets = []
 
-async def distribute_fuel(ctx: Context):
-    print("\n--- 🏦 STARTING FUEL DISTRIBUTION ---")
-    try:
-        # Check Banker's funds at Index 0
-        banker_fetch = Identity.from_seed(SEEDS[0], 0).address
-        bal = ledger.query_bank_balance(banker_fetch)
-        print(f"💰 Banker Balance: {float(bal)/10**18:.4f} FET")
+async def manual_fuel_run():
+    # 1. Initialize Banker
+    banker_identity = Identity.from_seed(BANKER_SEED, 0)
+    print(f"🏦 Banker initialized: {banker_identity.address}")
+    
+    banker_bal = ledger.query_bank_balance(banker_identity.address)
+    print(f"💰 Current Banker Balance: {float(banker_bal)/10**18:.4f} FET")
 
-        if int(bal) < (FUEL_AMOUNT * 19):
-            print("⚠️ Banker might not have enough to fuel everyone. Proceeding anyway.")
-
-        for target in sub_agent_wallets:
-            t_bal = ledger.query_bank_balance(target)
-            if int(t_bal) < (FUEL_AMOUNT / 2):
-                print(f"⛽ Fueling {target[:15]}...")
-                tx = ledger.send_tokens(target, FUEL_AMOUNT, "afet", ctx.wallet)
-                await wait_for_tx_to_complete(tx.tx_hash, ledger)
-                print(f"✅ Tx Success: {tx.tx_hash[:10]}")
-                await asyncio.sleep(2) 
-                
-    except Exception as e:
-        print(f"❌ Distribution Error: {e}")
-    print("--- 🏦 DISTRIBUTION CYCLE ENDED ---\n")
-
-# BUILD FLEET
-for i, seed in enumerate(SEEDS):
-    role = ["Oracle", "Notary", "Maker", "Broker"][min(i // 5, 3)]
-    a_name = f"AlphaBeta-{role}-{i+1}"
-    
-    # Initialize normally to avoid TypeError
-    agent_obj = Agent(name=a_name, seed=seed)
-    
-    # SILENT OVERRIDE: Disable Almanac registration manually
-    agent_obj._use_almanac = False 
-    
-    f_addr = Identity.from_seed(seed, 0).address
-    
-    if a_name == BANKER_NAME:
-        # Re-enable registration ONLY for the Banker
-        agent_obj._use_almanac = True
+    # 2. Loop through sub-agents
+    for seed in SUB_SEEDS:
+        target_addr = Identity.from_seed(seed, 0).address
         
-        @agent_obj.on_event("startup")
-        async def startup_fueling(ctx: Context):
-            await asyncio.sleep(2)
-            await distribute_fuel(ctx)
-            
-        @agent_obj.on_interval(period=1800)
-        async def regular_fueling(ctx: Context):
-            await distribute_fuel(ctx)
-    else:
-        sub_agent_wallets.append(f_addr)
+        try:
+            print(f"⛽ Sending to {target_addr[:15]}...")
+            # Direct ledger transfer
+            tx = ledger.send_tokens(target_addr, FUEL_AMOUNT, "afet", banker_identity)
+            await wait_for_tx_to_complete(tx.tx_hash, ledger)
+            print(f"✅ Success. Tx: {tx.tx_hash[:10]}")
+            await asyncio.sleep(1) # Small gap
+        except Exception as e:
+            print(f"❌ Error with {target_addr[:10]}: {e}")
 
-    bureau.add(agent_obj)
+    print("\n🏁 All transfers attempted. You can now go back to your main Bureau script!")
 
 if __name__ == "__main__":
-    perform_safety_backup()
-    print(f"🚀 Fleet Initialized. {BANKER_NAME} is the designated distributor.")
-    bureau.run()
+    asyncio.run(manual_fuel_run())
