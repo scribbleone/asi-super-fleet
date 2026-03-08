@@ -29,21 +29,21 @@ sub_agent_wallets = []
 async def distribute_fuel(ctx: Context):
     print("\n--- 🏦 STARTING FUEL DISTRIBUTION ---")
     try:
+        # Check Banker's funds at Index 0
         banker_fetch = Identity.from_seed(SEEDS[0], 0).address
         bal = ledger.query_bank_balance(banker_fetch)
-        print(f"💰 Banker Address: {banker_fetch} | Balance: {float(bal)/10**18:.4f} FET")
+        print(f"💰 Banker Balance: {float(bal)/10**18:.4f} FET")
 
-        if int(bal) < (FUEL_AMOUNT * 2):
-            print("⚠️ Insufficient funds for distribution.")
-            return
+        if int(bal) < (FUEL_AMOUNT * 19):
+            print("⚠️ Banker might not have enough to fuel everyone. Proceeding anyway.")
 
         for target in sub_agent_wallets:
             t_bal = ledger.query_bank_balance(target)
             if int(t_bal) < (FUEL_AMOUNT / 2):
-                print(f"⛽ Funding {target[:15]}...")
+                print(f"⛽ Fueling {target[:15]}...")
                 tx = ledger.send_tokens(target, FUEL_AMOUNT, "afet", ctx.wallet)
                 await wait_for_tx_to_complete(tx.tx_hash, ledger)
-                print(f"✅ Success! Tx: {tx.tx_hash[:10]}")
+                print(f"✅ Tx Success: {tx.tx_hash[:10]}")
                 await asyncio.sleep(2) 
                 
     except Exception as e:
@@ -55,20 +55,21 @@ for i, seed in enumerate(SEEDS):
     role = ["Oracle", "Notary", "Maker", "Broker"][min(i // 5, 3)]
     a_name = f"AlphaBeta-{role}-{i+1}"
     
-    # We disable Almanac registration for EVERYONE initially to prevent the boot-hang
-    agent_obj = Agent(
-        name=a_name, 
-        seed=seed,
-        almanac_registration=False # CRITICAL FIX
-    )
+    # Initialize normally to avoid TypeError
+    agent_obj = Agent(name=a_name, seed=seed)
+    
+    # SILENT OVERRIDE: Disable Almanac registration manually
+    agent_obj._use_almanac = False 
     
     f_addr = Identity.from_seed(seed, 0).address
     
     if a_name == BANKER_NAME:
+        # Re-enable registration ONLY for the Banker
+        agent_obj._use_almanac = True
+        
         @agent_obj.on_event("startup")
         async def startup_fueling(ctx: Context):
-            # Manually trigger registration only for the Banker
-            print(f"🌐 Registering {BANKER_NAME} on Almanac...")
+            await asyncio.sleep(2)
             await distribute_fuel(ctx)
             
         @agent_obj.on_interval(period=1800)
@@ -81,7 +82,5 @@ for i, seed in enumerate(SEEDS):
 
 if __name__ == "__main__":
     perform_safety_backup()
-    # Pre-flight check
-    main_addr = Identity.from_seed(SEEDS[0], 0).address
-    print(f"🕵️ Pre-flight: Checking {main_addr}")
+    print(f"🚀 Fleet Initialized. {BANKER_NAME} is the designated distributor.")
     bureau.run()
