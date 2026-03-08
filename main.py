@@ -1,7 +1,6 @@
 import os, shutil, asyncio
 from uagents import Agent, Bureau, Context
 from uagents.network import get_ledger
-from cosmpy.crypto.keypairs import Secp256k1PublicKey
 
 # --- ⚙️ CONFIGURATION ---
 BANKER_NAME = "AlphaBeta-Oracle-1"
@@ -24,30 +23,21 @@ SEEDS = [
 bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
 ledger = get_ledger()
 
-def get_clean_fetch_addr(identity_obj):
-    """Derives a fetch1 address using the Secp256k1 standard."""
-    pk_hex = getattr(identity_obj, 'pub_key', getattr(identity_obj, 'public_key', None))
-    raw_bytes = bytes.fromhex(pk_hex)
-    # Secp256k1PublicKey expects exactly 33 bytes. 
-    # uagents sometimes includes a 1-byte prefix (0x02/0x03) or a header.
-    # We ensure we provide the correct 33-byte compressed public key.
-    clean_pk = Secp256k1PublicKey(raw_bytes[-33:])
-    return str(clean_pk.address(prefix="fetch"))
-
 async def find_funded_index(seed):
-    print("🔍 Final Scan: Locating the 9.6 FET...")
+    print("🔍 Scanning for 9.6 FET on Mainnet...")
     for i in range(5):
         try:
-            from uagents.crypto import Identity
-            ident = Identity.from_seed(seed, i)
-            fetch_addr = get_clean_fetch_addr(ident)
+            # We create a temporary agent to use its internal wallet derivation
+            temp_agent = Agent(seed=seed, index=i)
+            # Fetch.ai agents use the 'fetch1' prefix for their wallets
+            wallet_addr = str(temp_agent.wallet.address())
             
-            bal_raw = ledger.query_bank_balance(fetch_addr)
+            bal_raw = ledger.query_bank_balance(wallet_addr)
             bal = float(bal_raw) / 10**18
-            print(f"  [Index {i}] {fetch_addr} | {bal:.4f} FET")
+            print(f"  [Index {i}] {wallet_addr} | {bal:.4f} FET")
             
             if bal > 0.1:
-                print(f"⭐ SUCCESS! FOUND {bal:.4f} FET")
+                print(f"⭐ SUCCESS! FOUND {bal:.4f} FET AT INDEX {i}")
                 return i
         except Exception as e:
             print(f"  [Index {i}] Scan error: {e}")
@@ -73,13 +63,11 @@ for i, seed in enumerate(SEEDS):
     role = ["Oracle", "Notary", "Maker", "Broker"][min(i // 5, 3)]
     a_name = f"AlphaBeta-{role}-{i+1}"
     
-    from uagents.crypto import Identity
-    new_ident = Identity.from_seed(seed, found_idx)
-    agent_obj = Agent(name=a_name, seed=seed)
-    agent_obj._identity = new_ident
+    # Initialize the agent with the index where we found the funds
+    agent_obj = Agent(name=a_name, seed=seed, index=found_idx)
+    w_addr = str(agent_obj.wallet.address())
     
-    fetch_addr = get_clean_fetch_addr(agent_obj._identity)
-    register_handlers(agent_obj, a_name, fetch_addr)
+    register_handlers(agent_obj, a_name, w_addr)
     bureau.add(agent_obj)
 
 if __name__ == "__main__":
