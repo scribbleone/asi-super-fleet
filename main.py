@@ -1,7 +1,7 @@
 import asyncio
 from uagents.network import get_ledger, wait_for_tx_to_complete
 from uagents.crypto import Identity
-from cosmpy.crypto.address import Address 
+from uagents.crypto.identity import bech32_encode # Direct encoding
 
 # --- ⚙️ FUNDING SETUP ---
 BANKER_SEED = "alpha_prime_v26_secure_881"
@@ -15,15 +15,15 @@ SUB_SEEDS = [
     "beta_matrix_v26_secure_551"
 ]
 
-# 0.05 FET in AttoFET
-FUEL_AMOUNT = 50000000000000000 
+FUEL_AMOUNT = 50000000000000000 # 0.05 FET
 ledger = get_ledger()
 
 def get_valid_fetch_address(seed):
-    """Derives a valid fetch1 address using the correctly named attribute."""
+    """Uses bech32_encode to force create a valid fetch1 address from keys."""
     ident = Identity.from_seed(seed, 0)
-    # Use .pub_key as requested by your environment's AttributeError
-    return str(Address(ident.pub_key, prefix="fetch"))
+    # This pulls the raw key data directly and wraps it in a 'fetch' prefix
+    # It bypasses the problematic Address class parsing
+    return bech32_encode("fetch", ident._public_key_bytes)
 
 async def manual_fuel_run():
     # 1. Initialize Banker
@@ -52,7 +52,7 @@ async def manual_fuel_run():
         except Exception as e:
             print(f"❌ Error with {target_fetch_address[:15]}: {e}")
 
-    print("\n🏁 Mission accomplished. The fleet is fueled and ready for your break!")
+    print("\n🏁 Mission complete. You can officially take that break now!")
 
 if __name__ == "__main__":
     asyncio.run(manual_fuel_run())
