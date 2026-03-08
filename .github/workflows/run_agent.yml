@@ -1,12 +1,13 @@
-name: Super-Agent Pulse
+name: Super-Agent Pulse 24/7
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '*/20 * * * *'  # Runs every 20 minutes, 24/7
 
 jobs:
-  run-alpha:
+  run-fleet:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -17,13 +18,10 @@ jobs:
           python-version: '3.10'
 
       - name: Install 2026 Libraries
-        run: |
-          pip install cosmpy uagents
+        run: pip install cosmpy uagents
 
-      - name: Run Alpha Manager
+      - name: Run 20-Agent Bureau
         env:
           AGENT_SEED: ${{ secrets.AGENT_SEED }}
-          AGENT_SEED_GAS: ${{ secrets.AGENT_SEED_GAS }}
-          AGENT_SEED_AUDIT: ${{ secrets.AGENT_SEED_AUDIT }}
         run: python main.py
         
