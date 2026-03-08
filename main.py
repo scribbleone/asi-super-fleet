@@ -5,8 +5,7 @@ from uagents.crypto import Identity
 
 # --- ⚙️ CONFIGURATION ---
 BANKER_NAME = "AlphaBeta-Oracle-1"
-# 0.05 FET expressed in AttoFET
-FUEL_AMOUNT = 50000000000000000 
+FUEL_AMOUNT = 50000000000000000  # 0.05 FET
 
 def perform_safety_backup():
     if os.path.exists("main.py"):
@@ -28,40 +27,50 @@ ledger = get_ledger()
 sub_agent_wallets = []
 
 async def distribute_fuel(ctx: Context):
-    # Get Banker's actual balance first
-    banker_bal = ledger.query_bank_balance(str(ctx.address))
-    print(f"💰 Banker ({BANKER_NAME}) Balance: {float(banker_bal)/10**18:.4f} FET")
-    
-    if int(banker_bal) < (FUEL_AMOUNT * 20):
-        print("⚠️ Banker has insufficient funds to fuel the whole fleet. Proceeding with caution.")
+    """Checks the Banker's funds and fuels the rest of the fleet."""
+    try:
+        banker_fetch_addr = Identity.from_seed(SEEDS[0], 0).address
+        banker_bal = ledger.query_bank_balance(banker_fetch_addr)
+        print(f"💰 BANKER AUDIT | Address: {banker_fetch_addr} | Balance: {float(banker_bal)/10**18:.4f} FET")
 
-    for target_wallet in sub_agent_wallets:
-        try:
-            current_bal = ledger.query_bank_balance(target_wallet)
-            if int(current_bal) < (FUEL_AMOUNT / 2):
-                print(f"⛽ Fueling {target_wallet[:15]}...")
-                # Explicitly using Mainnet denomination "afet"
+        if int(banker_bal) < FUEL_AMOUNT:
+            print("❌ Banker has no FET to distribute. Skipping fueling cycle.")
+            return
+
+        for target_wallet in sub_agent_wallets:
+            # Skip if target is the banker or already has funds
+            if target_wallet == banker_fetch_addr: continue
+            
+            bal = ledger.query_bank_balance(target_wallet)
+            if int(bal) < (FUEL_AMOUNT / 2):
+                print(f"⛽ Sending 0.05 FET to {target_wallet[:15]}...")
+                # Using the wallet attached to the Banker context
                 tx = ledger.send_tokens(target_wallet, FUEL_AMOUNT, "afet", ctx.wallet)
                 await wait_for_tx_to_complete(tx.tx_hash, ledger)
-                print(f"✅ Success.")
-                await asyncio.sleep(1) # Network breathing room
-        except Exception as e:
-            print(f"❌ Failed to fuel {target_wallet[:15]}: {e}")
+                print(f"✅ Transaction Confirmed: {tx.tx_hash[:10]}...")
+                await asyncio.sleep(3) # Heavy delay to ensure sequence success
+    except Exception as e:
+        print(f"⚠️ Banker Error: {e}")
 
 # BUILD FLEET
 for i, seed in enumerate(SEEDS):
     role = ["Oracle", "Notary", "Maker", "Broker"][min(i // 5, 3)]
     a_name = f"AlphaBeta-{role}-{i+1}"
     
-    # We ensure they are all explicitly targeting Mainnet
     agent_obj = Agent(name=a_name, seed=seed)
-    
-    # Deriving the fetch1 address for the banker's list
+    # We derive the fetch1 address to track who needs money
     f_addr = Identity.from_seed(seed, 0).address
     
     if a_name == BANKER_NAME:
+        @agent_obj.on_interval(period=600) # Check and fuel every 10 minutes
+        async def distribution_cycle(ctx: Context):
+            await distribute_fuel(ctx)
+        
+        # Immediate first attempt
         @agent_obj.on_event("startup")
-        async def startup_fueling(ctx: Context):
+        async def startup_check(ctx: Context):
+            print(f"🚀 {BANKER_NAME} Online. Distribution cycle starting in 5 seconds...")
+            await asyncio.sleep(5)
             await distribute_fuel(ctx)
     else:
         sub_agent_wallets.append(f_addr)
