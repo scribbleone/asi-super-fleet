@@ -1,7 +1,6 @@
-import asyncio
+import asyncio, bech32
 from uagents.network import get_ledger, wait_for_tx_to_complete
 from uagents.crypto import Identity
-from uagents.crypto.identity import bech32_encode # Direct encoding
 
 # --- ⚙️ FUNDING SETUP ---
 BANKER_SEED = "alpha_prime_v26_secure_881"
@@ -15,15 +14,18 @@ SUB_SEEDS = [
     "beta_matrix_v26_secure_551"
 ]
 
-FUEL_AMOUNT = 50000000000000000 # 0.05 FET
+FUEL_AMOUNT = 50000000000000000  # 0.05 FET
 ledger = get_ledger()
 
 def get_valid_fetch_address(seed):
-    """Uses bech32_encode to force create a valid fetch1 address from keys."""
+    """Uses the raw bech32 library to encode the address from the agent identity."""
     ident = Identity.from_seed(seed, 0)
-    # This pulls the raw key data directly and wraps it in a 'fetch' prefix
-    # It bypasses the problematic Address class parsing
-    return bech32_encode("fetch", ident._public_key_bytes)
+    # 1. Get the agent address (e.g., agent1...)
+    agent_addr = ident.address
+    # 2. Decode the agent address to get the raw data
+    hrp, data = bech32.bech32_decode(agent_addr)
+    # 3. Re-encode using 'fetch' as the new prefix
+    return bech32.bech32_encode("fetch", data)
 
 async def manual_fuel_run():
     # 1. Initialize Banker
@@ -52,7 +54,7 @@ async def manual_fuel_run():
         except Exception as e:
             print(f"❌ Error with {target_fetch_address[:15]}: {e}")
 
-    print("\n🏁 Mission complete. You can officially take that break now!")
+    print("\n🏁 Mission accomplished. The fleet is fueled. Enjoy your break!")
 
 if __name__ == "__main__":
     asyncio.run(manual_fuel_run())
