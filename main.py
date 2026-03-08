@@ -1,6 +1,6 @@
 import os, shutil, asyncio
 from uagents import Agent, Bureau, Context
-from uagents.setup import fund_agent_if_low
+from uagents.crypto import Identity
 
 # --- ⚙️ CONFIGURATION ---
 MASTER_WALLET = "fetch1k6qg2lv5jpt3sdy66g5gn3f63m6e9wesdz99rm"
@@ -24,38 +24,39 @@ SEEDS = [
 
 bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
 
-# Pre-calculate all fetch1 addresses
-ALL_FETCH_ADDRS = []
+# Pre-calculate all fetch1 addresses to ensure we don't use 'agent1' prefixes
+ALL_WALLETS = []
 for s in SEEDS:
-    temp_agent = Agent(seed=s)
-    ALL_FETCH_ADDRS.append(str(temp_agent.wallet.address()))
+    temp_ident = Identity.from_seed(s, 0)
+    ALL_WALLETS.append(temp_ident.address)
 
-def register_handlers(target_agent, name, my_wallet_addr):
-    # We store the actual wallet object here to ensure we have signing power
-    my_wallet = target_agent.wallet
+def register_handlers(target_agent, name, my_addr):
+    agent_wallet = target_agent.wallet
 
     @target_agent.on_event("startup")
     async def startup_audit(ctx: Context):
         try:
-            bal_raw = ctx.ledger.query_bank_balance(my_wallet_addr)
+            bal_raw = ctx.ledger.query_bank_balance(my_addr)
             bal = float(bal_raw) / 10**18
             status = "✅ READY" if bal >= 0.05 else "❌ NO FUEL"
             
-            print(f"[{status}] {name:20} | {bal:.4f} FET | {my_wallet_addr[:15]}...")
+            print(f"[{status}] {name:20} | {bal:.4f} FET | {my_addr[:15]}...")
 
             if name == BANKER_NAME and bal > 0.5:
-                print(f"⛽ {name} (Banker) attempting to fuel fleet...")
-                for target in ALL_FETCH_ADDRS:
-                    if target != my_wallet_addr:
+                print(f"⛽ {name} Banker checking fleet...")
+                for target in ALL_WALLETS:
+                    if target != my_addr:
                         t_bal = float(ctx.ledger.query_bank_balance(target)) / 10**18
                         if t_bal < 0.05:
-                            print(f"💸 Sending 0.1 FET to {target[:15]}...")
-                            # Direct ledger transfer using the agent's internal wallet
-                            await ctx.ledger.send_tokens(my_wallet, target, int(0.1 * 10**18), "FET")
-                            await asyncio.sleep(2) # Prevent sequence/nonce errors
+                            print(f"💸 Attempting to fuel {target[:15]}...")
+                            try:
+                                # Direct Ledger Send: The most basic way to move FET
+                                await ctx.ledger.send_tokens(agent_wallet, target, int(0.1 * 10**18), "FET")
+                                await asyncio.sleep(2) # Nonce protection
+                            except Exception as tx_error:
+                                print(f"❌ Transfer Failed to {target[:15]}: {tx_error}")
         except Exception as e:
-            # If it still fails, we need to see exactly why (e.g., Insufficient funds for gas)
-            print(f"⚠️ {name} Ledger Error: {e}")
+            print(f"⚠️ {name} Audit Error: {e}")
 
 # BUILD FLEET
 for i, seed in enumerate(SEEDS):
