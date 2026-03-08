@@ -1,7 +1,7 @@
 import asyncio
 from uagents.network import get_ledger, wait_for_tx_to_complete
 from uagents.crypto import Identity
-from cosmpy.crypto.address import Address # The "Secret Sauce" for checksums
+from cosmpy.crypto.address import Address 
 
 # --- ⚙️ FUNDING SETUP ---
 BANKER_SEED = "alpha_prime_v26_secure_881"
@@ -15,14 +15,15 @@ SUB_SEEDS = [
     "beta_matrix_v26_secure_551"
 ]
 
-FUEL_AMOUNT = 50000000000000000  # 0.05 FET
+# 0.05 FET in AttoFET
+FUEL_AMOUNT = 50000000000000000 
 ledger = get_ledger()
 
 def get_valid_fetch_address(seed):
-    """Derives a valid fetch1 address with a correct checksum."""
+    """Derives a valid fetch1 address using the correctly named attribute."""
     ident = Identity.from_seed(seed, 0)
-    # Convert the raw public key bytes into a fetch1 address
-    return str(Address(ident.public_key, prefix="fetch"))
+    # Use .pub_key as requested by your environment's AttributeError
+    return str(Address(ident.pub_key, prefix="fetch"))
 
 async def manual_fuel_run():
     # 1. Initialize Banker
@@ -35,7 +36,7 @@ async def manual_fuel_run():
         banker_bal = ledger.query_bank_balance(banker_fetch_address)
         print(f"💰 Current Banker Balance: {float(banker_bal)/10**18:.4f} FET")
     except Exception as e:
-        print(f"❌ Ledger Rejected Address again: {e}")
+        print(f"❌ Ledger Access Error: {e}")
         return
 
     # 2. Loop through sub-agents
@@ -51,7 +52,7 @@ async def manual_fuel_run():
         except Exception as e:
             print(f"❌ Error with {target_fetch_address[:15]}: {e}")
 
-    print("\n🏁 Mission Accomplished. Enjoy your break!")
+    print("\n🏁 Mission accomplished. The fleet is fueled and ready for your break!")
 
 if __name__ == "__main__":
     asyncio.run(manual_fuel_run())
