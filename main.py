@@ -1,7 +1,7 @@
 import os, shutil, asyncio
 from uagents import Agent, Bureau, Context
 from uagents.network import get_ledger
-from uagents.crypto import Identity, encode_bech32
+from cosmpy.crypto.address import Address
 
 # --- ⚙️ CONFIGURATION ---
 BANKER_NAME = "AlphaBeta-Oracle-1"
@@ -22,23 +22,27 @@ SEEDS = [
 ]
 
 bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
-# Using get_ledger() but we will manually verify the balance against the chain
 ledger = get_ledger()
 
 async def find_funded_index(seed):
-    print("🔍 Scanning Mainnet for the 9.6 FET...")
+    print("🔍 Scanning indices for funds using Direct Ledger...")
     for i in range(5):
-        ident = Identity.from_seed(seed, i)
-        fetch_addr = encode_bech32("fetch", ident.address_bytes)
+        # Using a temporary agent to get the raw public key
+        temp_agent = Agent(seed=seed, index=i) if hasattr(Agent, 'index') else Agent(seed=seed)
+        raw_pubkey = temp_agent.wallet.public_key
+        
+        # Convert to fetch1 address directly via Cosmpy
+        fetch_addr = str(Address(raw_pubkey, prefix="fetch"))
+        
         try:
             bal_raw = ledger.query_bank_balance(fetch_addr)
             bal = float(bal_raw) / 10**18
             print(f"  [Index {i}] {fetch_addr} | {bal:.4f} FET")
             if bal > 0.1:
-                print(f"⭐ SUCCESS! FOUND FUNDS AT INDEX {i}!")
+                print(f"⭐ SUCCESS! FOUND FUNDS AT INDEX {i}")
                 return i
         except Exception as e:
-            print(f"  [Index {i}] Query failed: {e}")
+            print(f"  [Index {i}] Query failed.")
     return 0
 
 def register_handlers(target_agent, name, wallet_addr):
@@ -49,10 +53,12 @@ def register_handlers(target_agent, name, wallet_addr):
             bal = float(bal_raw) / 10**18
             status = "✅ READY" if bal >= 0.05 else "❌ NO FUEL"
             print(f"[{status}] {name:20} | {bal:.4f} FET | {wallet_addr[:15]}...")
-        except: pass
+        except:
+            pass
 
 # 1. FIND THE MONEY
 loop = asyncio.get_event_loop()
+# Force scan index 0 first as it's the most likely
 found_idx = loop.run_until_complete(find_funded_index(SEEDS[0]))
 
 # 2. START THE FLEET
@@ -60,15 +66,10 @@ for i, seed in enumerate(SEEDS):
     role = ["Oracle", "Notary", "Maker", "Broker"][min(i // 5, 3)]
     a_name = f"AlphaBeta-{role}-{i+1}"
     
-    # We use the index that we found the money on
-    agent_obj = Agent(name=a_name, seed=seed) 
+    # Standard Init
+    agent_obj = Agent(name=a_name, seed=seed)
+    fetch_addr = str(Address(agent_obj.wallet.public_key, prefix="fetch"))
     
-    # Manual identity shift if money isn't at Index 0
-    if found_idx != 0:
-        new_ident = Identity.from_seed(seed, found_idx)
-        agent_obj._identity = new_ident
-        
-    fetch_addr = encode_bech32("fetch", agent_obj.identity.address_bytes)
     register_handlers(agent_obj, a_name, fetch_addr)
     bureau.add(agent_obj)
 
