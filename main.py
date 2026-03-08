@@ -24,8 +24,7 @@ SEEDS = [
 
 bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
 
-# OFFLINE WALLET ADDRESS CALCULATION (Using Index 0)
-# We specifically get the .address (fetch1...) for blockchain transactions
+# OFFLINE WALLET ADDRESS CALCULATION
 ALL_WALLETS = []
 for s in SEEDS:
     ident = Identity.from_seed(s, 0)
@@ -48,14 +47,17 @@ def register_handlers(target_agent, name, my_wallet_addr):
                 if bal < 0.2:
                     print(f"🚨 ALERT: Banker {name} low on funds ({bal:.4f} FET)!")
                 else:
-                    print(f"⛽ Banker {name} online. Checking fleet fuel...")
+                    print(f"⛽ Banker {name} online. Fueling fleet...")
                     for target_wallet in ALL_WALLETS:
                         if target_wallet != my_wallet_addr:
                             t_bal = float(ctx.ledger.query_bank_balance(target_wallet)) / 10**18
                             if t_bal < 0.05:
-                                print(f"💸 Fueling {target_wallet[:15]}... from Banker")
-                                # Use target_wallet (fetch1...) instead of agent address
+                                print(f"💸 Fueling {target_wallet[:15]}...")
+                                # Send tokens to the fetch1 address
                                 await ctx.ledger.send_tokens(agent_wallet_obj, target_wallet, int(0.1 * 10**18), "FET")
+                                # Tiny sleep to prevent network congestion
+                                await asyncio.sleep(2) 
+                    print("✅ Fueling sequence complete.")
         except Exception as e:
             print(f"⚠️ {name} Ledger Error: {e}")
 
@@ -76,7 +78,7 @@ for i, seed in enumerate(SEEDS):
     a_name = f"AlphaBeta-{role}-{i+1}"
     
     agent_obj = Agent(name=a_name, seed=seed)
-    # Get the fetch1... address for this agent specifically
+    # Ensure we pass the wallet's fetch1 address
     wallet_addr = str(agent_obj.wallet.address())
     
     register_handlers(agent_obj, a_name, wallet_addr)
