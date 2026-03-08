@@ -24,47 +24,52 @@ SEEDS = [
 bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
 ledger = get_ledger()
 
-async def find_funded_identity(seed):
-    """Scans indices 0-9 to find where the 9.6 FET is hiding."""
+async def find_funded_index(seed):
+    """Scans indices 0-9 to locate the 9.6 FET."""
     print("🔍 Scanning seed indices for funds...")
     for i in range(10):
-        # We use Agent(seed, index) to ensure we get the correct wallet derivation
-        temp_agent = Agent(seed=seed, index=i)
-        wallet_addr = str(temp_agent.wallet.address()) # This gets the 'fetch1...' address
+        # Correct way to derive the identity for a specific index
+        ident = Identity.from_seed(seed, i)
+        wallet_addr = ident.address
         
         try:
             bal_raw = ledger.query_bank_balance(wallet_addr)
             bal = float(bal_raw) / 10**18
-            print(f"  Index {i}: {wallet_addr[:15]}... | {bal:.4f} FET")
+            print(f"  Index {i}: {wallet_addr} | {bal:.4f} FET")
             
             if bal > 0.5:
-                print(f"⭐ SUCCESS! FOUND FUNDS AT INDEX {i}")
+                print(f"⭐ SUCCESS! FOUND {bal:.4f} FET AT INDEX {i}")
                 return i
         except Exception as e:
-            print(f"  Index {i}: Error querying balance: {e}")
+            print(f"  Index {i}: Error: {e}")
             
     return 0
 
 def register_handlers(target_agent, name, wallet_addr):
     @target_agent.on_event("startup")
     async def startup_audit(ctx: Context):
-        bal_raw = ledger.query_bank_balance(wallet_addr)
-        bal = float(bal_raw) / 10**18
-        status = "✅ READY" if bal >= 0.05 else "❌ NO FUEL"
-        print(f"[{status}] {name:20} | {bal:.4f} FET | {wallet_addr[:15]}...")
+        try:
+            bal_raw = ledger.query_bank_balance(wallet_addr)
+            bal = float(bal_raw) / 10**18
+            status = "✅ READY" if bal >= 0.05 else "❌ NO FUEL"
+            print(f"[{status}] {name:20} | {bal:.4f} FET | {wallet_addr[:15]}...")
+        except:
+            pass
 
-# RUN THE SCANNER
+# 1. RUN THE SCANNER
 loop = asyncio.get_event_loop()
-funded_index = loop.run_until_complete(find_funded_identity(SEEDS[0]))
+funded_index = loop.run_until_complete(find_funded_index(SEEDS[0]))
 
-# BUILD FLEET USING THE CORRECT INDEX
+# 2. BUILD FLEET
 for i, seed in enumerate(SEEDS):
     role = ["Oracle", "Notary", "Maker", "Broker"][min(i // 5, 3)]
     a_name = f"AlphaBeta-{role}-{i+1}"
     
-    # Apply the funded index to ALL agents or just the Banker? 
-    # Usually, if you funded one, they are all likely at that same index.
-    agent_obj = Agent(name=a_name, seed=seed, index=funded_index)
+    # Generate the identity using the found index
+    agent_identity = Identity.from_seed(seed, funded_index)
+    
+    # Initialize agent with the explicit identity
+    agent_obj = Agent(name=a_name, identity=agent_identity)
     
     w_addr = str(agent_obj.wallet.address())
     register_handlers(agent_obj, a_name, w_addr)
