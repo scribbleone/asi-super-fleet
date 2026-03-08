@@ -3,6 +3,7 @@ from uagents import Agent, Bureau, Context
 from uagents.crypto import Identity
 
 # --- ⚙️ MASTER CONFIGURATION ---
+# This is your funded Banker address: fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x
 MASTER_WALLET = "fetch1k6qg2lv5jpt3sdy66g5gn3f63m6e9wesdz99rm" 
 BANKER_NAME = "AlphaBeta-Oracle-1"
 
@@ -24,35 +25,37 @@ SEEDS = [
 
 bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
 
-# CALCULATE ADDRESSES OFFLINE (No network calls here)
+# OFFLINE ADDRESS CALCULATION (Using Index 0 to match your funded wallet)
 ALL_FETCH_ADDRS = []
 for s in SEEDS:
-    # We use the Identity class to get the address without hitting the blockchain
     ident = Identity.from_seed(s, 0)
-    # The uagents lib provides the wallet address derived from the identity
     ALL_FETCH_ADDRS.append(ident.address)
 
 def register_handlers(target_agent, name, my_addr):
-    # Capture the wallet object directly from the agent
+    # Capture the actual wallet object to prevent 'str' errors
     agent_wallet = target_agent.wallet
 
     @target_agent.on_event("startup")
     async def startup_audit(ctx: Context):
-        # Only check balance once per agent startup
         try:
-            bal = float(ctx.ledger.query_bank_balance(my_addr)) / 10**18
-            print(f"--- 🤖 {name} Online ---")
-            print(f"💰 BAL: {bal:.4f} FET")
+            bal_raw = ctx.ledger.query_bank_balance(my_addr)
+            bal = float(bal_raw) / 10**18
+            status = "✅ READY" if bal >= 0.05 else "❌ NO FUEL"
+            
+            # DASHBOARD DISPLAY
+            print(f"[{status}] {name:20} | {bal:.4f} FET | {my_addr[:15]}...")
 
-            if name == BANKER_NAME and bal > 1.0:
-                print("⛽ Banker checking fuel levels...")
-                for target in ALL_FETCH_ADDRS:
-                    if target != my_addr:
-                        # Only query ledger if banker has funds
-                        t_bal = float(ctx.ledger.query_bank_balance(target)) / 10**18
-                        if t_bal < 0.05:
-                            print(f"💸 Fueling {target[:12]}...")
-                            await ctx.ledger.send_tokens(agent_wallet, target, int(0.1 * 10**18), "FET")
+            if name == BANKER_NAME:
+                if bal < 0.2:
+                    print(f"🚨 ALERT: Banker {name} low on funds ({bal:.4f} FET)!")
+                else:
+                    print(f"⛽ Banker {name} online. Checking fleet fuel...")
+                    for target in ALL_FETCH_ADDRS:
+                        if target != my_addr:
+                            t_bal = float(ctx.ledger.query_bank_balance(target)) / 10**18
+                            if t_bal < 0.05:
+                                print(f"💸 Fueling {target[:12]} from Banker...")
+                                await ctx.ledger.send_tokens(agent_wallet, target, int(0.1 * 10**18), "FET")
         except Exception as e:
             print(f"⚠️ {name} Ledger Error: {e}")
 
@@ -67,12 +70,12 @@ def register_handlers(target_agent, name, my_addr):
         except:
             pass
 
-# Create Fleet
+# BUILD FLEET
 for i, seed in enumerate(SEEDS):
+    # Standardizing naming logic
     role = ["Oracle", "Notary", "Maker", "Broker"][min(i // 5, 3)]
     a_name = f"AlphaBeta-{role}-{i+1}"
     
-    # Initialize the agent normally
     agent_obj = Agent(name=a_name, seed=seed)
     current_addr = str(agent_obj.wallet.address())
     
