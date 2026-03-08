@@ -18,14 +18,12 @@ jobs:
 
       - name: Install 2026 Libraries
         run: |
-          pip install cosmpy coingecko-python
+          pip install cosmpy uagents
 
       - name: Run Alpha Manager
         env:
-          CG_API_KEY: ${{ secrets.CG_API_KEY }}
           AGENT_SEED: ${{ secrets.AGENT_SEED }}
           AGENT_SEED_GAS: ${{ secrets.AGENT_SEED_GAS }}
-          MASTER_WALLET_SEED: ${{ secrets.MASTER_WALLET_SEED }}
-          AGENT_SEED_AUDIT: ${{ secrets.AGENT_SEED_AUDIT }} # <--- NEW LINE ADDED
+          AGENT_SEED_AUDIT: ${{ secrets.AGENT_SEED_AUDIT }}
         run: python main.py
         
