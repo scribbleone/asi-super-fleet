@@ -1,24 +1,31 @@
 name: Super-Agent Pulse
+
 on:
-  workflow_dispatch: # This adds the "Run" button for your phone
-  schedule:
-    - cron: '0 * * * *' # Runs every hour automatically
+  workflow_dispatch: # Allows you to hit the manual "Run workflow" button
 
 jobs:
   run-alpha:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/checkout@v4
         with:
           python-version: '3.10'
-      - name: Install dependencies
-        run: pip install uagents cosmpy requests
+
+      - name: Install Dependencies
+        run: |
+          pip install fetchai coingecko-python
+
       - name: Run Alpha Manager
         env:
-          # This connects your "Secrets" to the code
+          # This maps your GitHub Secrets to the Python script
           CG_API_KEY: ${{ secrets.CG_API_KEY }}
           AGENT_SEED: ${{ secrets.AGENT_SEED }}
-        run: python main.py
+          AGENT_SEED_GAS: ${{ secrets.AGENT_SEED_GAS }}
+          MASTER_WALLET_SEED: ${{ secrets.MASTER_WALLET_SEED }}
+        run: python Main.py
         
