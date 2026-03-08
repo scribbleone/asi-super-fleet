@@ -25,13 +25,14 @@ bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
 ledger = get_ledger()
 
 async def find_funded_index(seed):
-    print("🔍 Scanning indices for funds using Direct Address Derivation...")
+    print("🔍 Final Scan: Locating the 9.6 FET...")
     for i in range(5):
         try:
-            # We derive the address without needing the full Agent object yet
             from uagents.crypto import Identity
             ident = Identity.from_seed(seed, i)
-            raw_pubkey_bytes = bytes.fromhex(ident.public_key)
+            # Fix: Using 'pub_key' as requested by the error log
+            pk_hex = getattr(ident, 'pub_key', getattr(ident, 'public_key', None))
+            raw_pubkey_bytes = bytes.fromhex(pk_hex)
             fetch_addr = str(Address(raw_pubkey_bytes, prefix="fetch"))
             
             bal_raw = ledger.query_bank_balance(fetch_addr)
@@ -39,10 +40,10 @@ async def find_funded_index(seed):
             print(f"  [Index {i}] {fetch_addr} | {bal:.4f} FET")
             
             if bal > 0.1:
-                print(f"⭐ SUCCESS! FOUND {bal:.4f} FET AT INDEX {i}")
+                print(f"⭐ SUCCESS! FOUND {bal:.4f} FET")
                 return i
         except Exception as e:
-            print(f"  [Index {i}] Error during scan: {e}")
+            print(f"  [Index {i}] Scan error: {e}")
     return 0
 
 def register_handlers(target_agent, name, wallet_addr):
@@ -65,15 +66,14 @@ for i, seed in enumerate(SEEDS):
     role = ["Oracle", "Notary", "Maker", "Broker"][min(i // 5, 3)]
     a_name = f"AlphaBeta-{role}-{i+1}"
     
-    # Initialize with the correct funded index
-    agent_obj = Agent(name=a_name, seed=seed, index=found_idx) if hasattr(Agent, 'index') else Agent(name=a_name, seed=seed)
-    
-    # If the library version doesn't support 'index' in __init__, we force it:
     from uagents.crypto import Identity
-    agent_obj._identity = Identity.from_seed(seed, found_idx)
+    new_ident = Identity.from_seed(seed, found_idx)
+    agent_obj = Agent(name=a_name, seed=seed)
+    agent_obj._identity = new_ident
     
-    # Extract the fetch address for the audit
-    pub_bytes = bytes.fromhex(agent_obj._identity.public_key)
+    # Extract fetch address using the corrected attribute
+    pk_hex = getattr(agent_obj._identity, 'pub_key', getattr(agent_obj._identity, 'public_key', None))
+    pub_bytes = bytes.fromhex(pk_hex)
     fetch_addr = str(Address(pub_bytes, prefix="fetch"))
     
     register_handlers(agent_obj, a_name, fetch_addr)
