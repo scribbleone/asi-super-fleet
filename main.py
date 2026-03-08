@@ -1,8 +1,13 @@
 import os, shutil, asyncio
 from uagents import Agent, Bureau, Context
 
-# --- ⚙️ CONFIGURATION & BACKUP ---
-MASTER_WALLET = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
+# --- ⚙️ MASTER CONFIGURATION ---
+# YOUR REAL BANK VAULT ADDRESS
+MASTER_WALLET = "fetch1k6qg2lv5jpt3sdy66g5gn3f63m6e9wesdz99rm"
+
+# THE FUNDED ACCOUNT (Alpha 1)
+BANKER_SEED = "alpha_prime_v26_secure_881"
+
 def perform_safety_backup():
     if os.path.exists("main.py"):
         shutil.copy("main.py", "main.py.backup")
@@ -21,32 +26,46 @@ SEEDS = [
 
 bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
 
+# We need to pre-generate addresses to help the Banker find them
+ALL_AGENT_ADDRESSES = []
+
 for i, seed in enumerate(SEEDS):
-    # Assignment Logic based on your original lucrative roles
-    if i < 5: role, job = "Oracle", "Price Feed Service"
-    elif i < 10: role, job = "Notary", "Data Authentication"
-    elif i < 15: role, job = "Maker", "Liquidity Provision"
-    else: role, job = "Broker", "Service Mediation"
+    # Role Assignment
+    if i < 5: role, job = "Oracle", "Price Feed"
+    elif i < 10: role, job = "Notary", "Authentication"
+    elif i < 15: role, job = "Maker", "Liquidity"
+    else: role, job = "Broker", "Mediation"
 
     agent = Agent(name=f"AlphaBeta-{role}-{i+1}", seed=seed)
+    ALL_AGENT_ADDRESSES.append(str(agent.wallet.address()))
 
     @agent.on_event("startup")
-    async def audit(ctx: Context):
-        print(f"--- 🛡️ {ctx.name} Startup ---")
-        print(f"ROLE: {job} | WALLET: {ctx.wallet.address()}")
-        print(f"DISCLAIMER: This agent is authorized to sweep to {MASTER_WALLET}.")
+    async def startup_audit(ctx: Context):
+        bal = float(ctx.ledger.query_bank_balance(ctx.wallet.address())) / 10**18
+        print(f"--- 🤖 {ctx.agent.name} Online ---")
+        print(f"💰 BAL: {bal:.4f} FET | 🏦 TARGET: {MASTER_WALLET}")
 
-    @agent.on_interval(period=300.0) # Internal check every 5 mins
-    async def task(ctx: Context):
-        # Automated Sweep Logic: Keep 0.5 FET, send rest to Master
+        # SPECIAL LOGIC FOR ALPHA 1 (The Banker)
+        if ctx.agent.name == "AlphaBeta-Oracle-1":
+            print("⛽ Banker detected. Checking fleet fuel levels...")
+            for addr in ALL_AGENT_ADDRESSES:
+                if addr != str(ctx.wallet.address()):
+                    target_bal = float(ctx.ledger.query_bank_balance(addr)) / 10**18
+                    if target_bal < 0.05: # If they have almost nothing
+                        print(f"💸 Sending gas to {addr[:10]}...")
+                        await ctx.send_tokens(addr, int(0.1 * 10**18), "FET")
+
+    @agent.on_interval(period=3600.0)
+    async def sweep(ctx: Context):
         bal = float(ctx.ledger.query_bank_balance(ctx.wallet.address())) / 10**18
         if bal > 5.0:
-            await ctx.send_tokens(MASTER_WALLET, int((bal-0.5) * 10**18), "FET")
-            ctx.logger.info(f"💰 {ctx.name} swept earnings to Master Wallet.")
+            sweep_val = int((bal - 0.5) * 10**18)
+            await ctx.send_tokens(MASTER_WALLET, sweep_val, "FET")
+            print(f"🚀 {ctx.agent.name} swept earnings to Vault.")
 
     bureau.add(agent)
 
 if __name__ == "__main__":
     perform_safety_backup()
     bureau.run()
-                                  
+    
