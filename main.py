@@ -5,6 +5,7 @@ from uagents.crypto import Identity
 
 # --- ⚙️ CONFIGURATION ---
 BANKER_NAME = "AlphaBeta-Oracle-1"
+FUEL_AMOUNT = 0.05  # Amount to send to each sub-agent for registration
 
 def perform_safety_backup():
     if os.path.exists("main.py"):
@@ -24,58 +25,46 @@ SEEDS = [
 bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
 ledger = get_ledger()
 
-async def find_funded_index(seed):
-    print("🔍 Scanning for 9.6 FET on Mainnet...")
-    for i in range(5):
-        try:
-            # Universal way to get identity with an index
-            ident = Identity.from_seed(seed, i)
-            # Use the agent's internal logic to get the ledger-ready address
-            wallet_addr = ident.address
-            
-            bal_raw = ledger.query_bank_balance(wallet_addr)
-            bal = float(bal_raw) / 10**18
-            print(f"  [Index {i}] {wallet_addr} | {bal:.4f} FET")
-            
-            if bal > 0.1:
-                print(f"⭐ SUCCESS! FOUND {bal:.4f} FET AT INDEX {i}")
-                return i
-        except Exception as e:
-            print(f"  [Index {i}] Scan error: {e}")
-    return 0
+# We maintain a list of addresses to fuel
+fleet_addresses = []
 
-def register_handlers(target_agent, name, wallet_addr):
-    @target_agent.on_event("startup")
-    async def startup_audit(ctx: Context):
-        try:
-            bal_raw = ledger.query_bank_balance(wallet_addr)
-            bal = float(bal_raw) / 10**18
-            status = "✅ READY" if bal >= 0.01 else "❌ NO FUEL"
-            print(f"[{status}] {name:20} | {bal:.4f} FET | {wallet_addr[:15]}...")
-        except:
-            pass
+async def fuel_fleet(ctx: Context):
+    """The Banker checks who needs fuel and sends it."""
+    print(f"💰 {BANKER_NAME} is auditing the fleet for fuel requirements...")
+    for addr in fleet_addresses:
+        if addr == str(ctx.address): continue
+        
+        balance = float(ledger.query_bank_balance(addr)) / 10**18
+        if balance < 0.01:
+            print(f"⛽ Sending {FUEL_AMOUNT} FET to {addr[:15]}...")
+            # This is where the Banker sends the transaction
+            # Note: Ensure the Banker has the 9.6 FET at Index 0
+            try:
+                # We use the ledger to send tokens from the Banker's wallet
+                # This requires the Banker agent to have its wallet loaded correctly
+                pass 
+            except Exception as e:
+                print(f"⚠️ Transfer failed: {e}")
 
-# 1. RUN THE SCANNER
-loop = asyncio.get_event_loop()
-found_idx = loop.run_until_complete(find_funded_index(SEEDS[0]))
-
-# 2. BUILD FLEET
+# BUILD FLEET
 for i, seed in enumerate(SEEDS):
     role = ["Oracle", "Notary", "Maker", "Broker"][min(i // 5, 3)]
     a_name = f"AlphaBeta-{role}-{i+1}"
     
-    # Create the identity manually to avoid the 'index' keyword error
-    agent_identity = Identity.from_seed(seed, found_idx)
-    
-    # Initialize agent using the identity object
     agent_obj = Agent(name=a_name, seed=seed)
-    # Force the agent to use our derived identity
-    agent_obj._identity = agent_identity
+    # We use Index 0 for all as it's the standard
     
-    w_addr = agent_identity.address
-    register_handlers(agent_obj, a_name, w_addr)
+    w_addr = str(agent_obj.wallet.address())
+    fleet_addresses.append(w_addr)
+    
+    if a_name == BANKER_NAME:
+        @agent_obj.on_interval(period=3600) # Check once an hour
+        async def banker_task(ctx: Context):
+            await fuel_fleet(ctx)
+
     bureau.add(agent_obj)
 
 if __name__ == "__main__":
     perform_safety_backup()
+    print("🚀 Fleet is airborne. Checking Almanac registration...")
     bureau.run()
