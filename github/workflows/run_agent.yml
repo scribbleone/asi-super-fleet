@@ -1,0 +1,23 @@
+name: Super-Agent Pulse
+on:
+  workflow_dispatch: # This adds the "Run" button for your phone
+  schedule:
+    - cron: '0 * * * *' # Runs every hour automatically
+
+jobs:
+  run-alpha:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install uagents cosmpy requests
+      - name: Run Alpha Manager
+        env:
+          # This connects your "Secrets" to the code
+          CG_API_KEY: ${{ secrets.CG_API_KEY }}
+          AGENT_SEED: ${{ secrets.AGENT_SEED }}
+        run: python main.py
