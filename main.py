@@ -3,52 +3,42 @@ import asyncio
 from cosmpy.aerial.client import LedgerClient, NetworkConfig
 from cosmpy.aerial.wallet import LocalWallet
 
-async def audit_all_seeds():
+async def deep_audit():
     # The secrets we are hunting for
     seeds_to_check = ["AGENT_SEED", "AGENT_SEED_GAS", "MASTER_WALLET_SEED"]
-    
-    # Connect to Fetch.ai Mainnet
     ledger = LedgerClient(NetworkConfig.fetch_mainnet())
     
-    print("--- 🛡️ ALPHA MULTI-AUDIT STARTING ---")
+    # Common "Mathematical Routes" (Derivation Paths)
+    # 118 = Fetch.ai / 60 = Ethereum / 118 (index 1) = Second Account
+    paths = ["m/44'/118'/0'/0/0", "m/44'/60'/0'/0/0", "m/44'/118'/1'/0/0"]
+    
+    print("--- 🛡️ ALPHA DEEP AUDIT STARTING ---")
     
     for seed_name in seeds_to_check:
-        seed_value = os.getenv(seed_name)
+        seed_value = os.getenv(seed_name, "").strip()
+        if not seed_value: continue
+            
+        print(f"🔍 Probing {seed_name}...")
         
-        if not seed_value or len(seed_value.strip()) < 5:
-            print(f"⚠️ {seed_name}: Empty or not found.")
-            continue
-            
-        try:
-            # Create wallet from mnemonic seed phrase
-            wallet = LocalWallet.from_mnemonic(seed_value)
-            address = str(wallet.address())
-            
-            # Query the balance
-            balance = ledger.query_bank_balance(address)
-            
-            print(f"✅ FOUND {seed_name}")
-            print(f"   📍 Address: {address}")
-            print(f"   💰 Balance: {balance / 10**18} FET")
-            
-        except Exception as e:
-            # If it's not a mnemonic, try treating it as a direct Private Key
+        for path in paths:
             try:
-                from cosmpy.crypto.keypairs import PrivateKey
-                priv_key = PrivateKey(bytes.fromhex(seed_value) if len(seed_value) == 64 else seed_value.encode())
-                wallet = LocalWallet(priv_key)
+                # We try to derive the wallet using the specific path
+                wallet = LocalWallet.from_mnemonic(seed_value, derivation_path=path)
                 address = str(wallet.address())
                 balance = ledger.query_bank_balance(address)
-                print(f"✅ FOUND {seed_name} (Private Key)")
-                print(f"   📍 Address: {address}")
-                print(f"   💰 Balance: {balance / 10**18} FET")
-            except:
-                print(f"❌ {seed_name}: Could not decode seed/key format.")
+                
+                print(f"   👉 Route {path}:")
+                print(f"      📍 {address}")
+                print(f"      💰 {balance / 10**18} FET")
+                
+                if (balance / 10**18) > 1:
+                    print(f"🎯 BINGO! Found significant balance in {seed_name} using {path}!")
+            except Exception:
+                continue
 
-    print("--- 🏁 AUDIT COMPLETE ---")
+    print("--- 🏁 DEEP AUDIT COMPLETE ---")
 
 if __name__ == "__main__":
-    # Standard 2026 async execution
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(audit_all_seeds())
-            
+    loop.run_until_complete(deep_audit())
+    
