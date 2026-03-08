@@ -3,52 +3,48 @@ import asyncio
 from cosmpy.aerial.client import LedgerClient, NetworkConfig
 from cosmpy.aerial.wallet import LocalWallet
 
+# PASTE YOUR KNOWN 9.6 FET ADDRESS HERE
+TARGET_ADDRESS = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x" 
+
 def clean_mobile_seed(raw_seed):
-    # THE SCRIBBLE 2 SYNC BRIDGE logic to fix mobile distortion
     return " ".join(raw_seed.split()).lower()
 
-async def wide_net_audit():
-    seeds_to_check = ["AGENT_SEED", "AGENT_SEED_GAS", "MASTER_WALLET_SEED"]
+async def targeted_audit():
+    seeds_to_check = ["AGENT_SEED", "AGENT_SEED_GAS"]
     ledger = LedgerClient(NetworkConfig.fetch_mainnet())
     
-    # We are checking 10 different "mathematical rooms"
-    # Includes Fetch.ai (118) and Ethereum (60) styles across multiple account indexes
-    paths = [
-        "m/44'/118'/0'/0/0", "m/44'/118'/1'/0/0", "m/44'/118'/0'/0/1",
-        "m/44'/60'/0'/0/0", "m/44'/60'/1'/0/0", "m/44'/60'/0'/0/1",
-        "m/44'/118'/0'/1", "m/44'/118'/0'/0", "m/44'/60'/0'/1", "m/44'/60'/0'/0"
-    ]
-    
-    print("--- 🛡️ ALPHA WIDE-NET AUDIT ---")
+    print(f"--- 🎯 TARGETED AUDIT: HUNTING FOR {TARGET_ADDRESS} ---")
     
     for seed_name in seeds_to_check:
         raw_val = os.getenv(seed_name, "")
         if not raw_val: continue
             
         clean_seed = clean_mobile_seed(raw_val)
-        print(f"🔍 Probing {seed_name} across 10 paths...")
+        print(f"🔍 Deep scanning {seed_name}...")
         
-        for path in paths:
-            try:
-                wallet = LocalWallet.from_mnemonic(clean_seed, derivation_path=path)
-                address = str(wallet.address())
-                balance_query = ledger.query_bank_balance(address)
-                balance = balance_query / 10**18
-                
-                # We only print if there is ANY money found to keep the log clean
-                if balance > 0:
-                    print(f"   💰 FOUND: {balance} FET")
-                    print(f"      📍 Path: {path}")
-                    print(f"      🔗 Addr: {address}")
+        # We are going to check the first 50 possible wallet indexes
+        for i in range(50):
+            # Checking both Fetch.ai (118) and Ethereum (60) derivation styles
+            for coin_type in ["118", "60"]:
+                path = f"m/44'/{coin_type}'/0'/0/{i}"
+                try:
+                    wallet = LocalWallet.from_mnemonic(clean_seed, derivation_path=path)
+                    address = str(wallet.address())
                     
-                if balance > 5:
-                    print(f"🎯 TARGET ACQUIRED: This is your 9.6 FET wallet!")
-            except:
-                continue
-
-    print("--- 🏁 WIDE-NET COMPLETE ---")
+                    if address == TARGET_ADDRESS:
+                        balance = ledger.query_bank_balance(address) / 10**18
+                        print(f"🎯 MATCH FOUND!")
+                        print(f"   📂 Secret: {seed_name}")
+                        print(f"   🛣️ Path: {path}")
+                        print(f"   💰 Balance: {balance} FET")
+                        return # Stop once we find it
+                except:
+                    continue
+                    
+    print("--- 🏁 SCAN COMPLETE: NO MATCH FOUND ---")
+    print("If no match, the seed in your Secrets may not be the one for that address.")
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(wide_net_audit())
+    loop.run_until_complete(targeted_audit())
     
