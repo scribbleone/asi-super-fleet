@@ -1,7 +1,7 @@
 import os, shutil, asyncio
 from uagents import Agent, Bureau, Context
 from uagents.network import get_ledger
-from cosmpy.crypto.address import Address
+from cosmpy.crypto.keypairs import Secp256k1PublicKey
 
 # --- ⚙️ CONFIGURATION ---
 BANKER_NAME = "AlphaBeta-Oracle-1"
@@ -25,12 +25,14 @@ bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
 ledger = get_ledger()
 
 def get_clean_fetch_addr(identity_obj):
-    """Slices the public key to the correct 33-byte length for Cosmpy."""
+    """Derives a fetch1 address using the Secp256k1 standard."""
     pk_hex = getattr(identity_obj, 'pub_key', getattr(identity_obj, 'public_key', None))
     raw_bytes = bytes.fromhex(pk_hex)
-    # If it's 35 bytes (standard uagents), slice the last 33. If 33, use all.
-    clean_bytes = raw_bytes[-33:] 
-    return str(Address(clean_bytes, prefix="fetch"))
+    # Secp256k1PublicKey expects exactly 33 bytes. 
+    # uagents sometimes includes a 1-byte prefix (0x02/0x03) or a header.
+    # We ensure we provide the correct 33-byte compressed public key.
+    clean_pk = Secp256k1PublicKey(raw_bytes[-33:])
+    return str(clean_pk.address(prefix="fetch"))
 
 async def find_funded_index(seed):
     print("🔍 Final Scan: Locating the 9.6 FET...")
