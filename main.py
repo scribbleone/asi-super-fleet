@@ -1,6 +1,7 @@
 import asyncio
 from uagents.network import get_ledger, wait_for_tx_to_complete
 from uagents.crypto import Identity
+from cosmpy.crypto.address import Address # The "Secret Sauce" for checksums
 
 # --- ⚙️ FUNDING SETUP ---
 BANKER_SEED = "alpha_prime_v26_secure_881"
@@ -17,46 +18,40 @@ SUB_SEEDS = [
 FUEL_AMOUNT = 50000000000000000  # 0.05 FET
 ledger = get_ledger()
 
-def get_fetch_address(seed):
-    """Force derives the fetch1 address prefix from a seed."""
+def get_valid_fetch_address(seed):
+    """Derives a valid fetch1 address with a correct checksum."""
     ident = Identity.from_seed(seed, 0)
-    # This manually strips 'agent' and replaces it with 'fetch'
-    if ident.address.startswith("agent"):
-        return "fetch" + ident.address[5:]
-    return ident.address
+    # Convert the raw public key bytes into a fetch1 address
+    return str(Address(ident.public_key, prefix="fetch"))
 
 async def manual_fuel_run():
     # 1. Initialize Banker
-    banker_fetch_address = get_fetch_address(BANKER_SEED)
+    banker_fetch_address = get_valid_fetch_address(BANKER_SEED)
     banker_identity = Identity.from_seed(BANKER_SEED, 0)
     
-    print(f"🏦 Banker Fetch Address: {banker_fetch_address}")
+    print(f"🏦 Banker Validated Address: {banker_fetch_address}")
     
     try:
         banker_bal = ledger.query_bank_balance(banker_fetch_address)
         print(f"💰 Current Banker Balance: {float(banker_bal)/10**18:.4f} FET")
     except Exception as e:
-        print(f"❌ Ledger Rejected Address: {e}")
+        print(f"❌ Ledger Rejected Address again: {e}")
         return
-
-    if int(banker_bal) < (FUEL_AMOUNT * 19):
-        print("⚠️ Warning: Low balance for full distribution.")
 
     # 2. Loop through sub-agents
     for seed in SUB_SEEDS:
-        target_fetch_address = get_fetch_address(seed)
+        target_fetch_address = get_valid_fetch_address(seed)
         
         try:
             print(f"⛽ Sending 0.05 FET to {target_fetch_address}...")
-            # We use the raw Identity object to sign, but the fetch1 string for the target
             tx = ledger.send_tokens(target_fetch_address, FUEL_AMOUNT, "afet", banker_identity)
             await wait_for_tx_to_complete(tx.tx_hash, ledger)
             print(f"✅ Success. Tx: {tx.tx_hash[:12]}")
-            await asyncio.sleep(1) 
+            await asyncio.sleep(1.5) 
         except Exception as e:
             print(f"❌ Error with {target_fetch_address[:15]}: {e}")
 
-    print("\n🏁 Operation Complete. Fleet is now funded.")
+    print("\n🏁 Mission Accomplished. Enjoy your break!")
 
 if __name__ == "__main__":
     asyncio.run(manual_fuel_run())
