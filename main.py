@@ -1,9 +1,9 @@
 import os, shutil, asyncio
 from uagents import Agent, Bureau, Context
 from uagents.network import get_ledger
+from uagents.crypto import Identity
 
 # --- ⚙️ CONFIGURATION ---
-MASTER_WALLET = "fetch1k6qg2lv5jpt3sdy66g5gn3f63m6e9wesdz99rm"
 BANKER_NAME = "AlphaBeta-Oracle-1"
 
 def perform_safety_backup():
@@ -11,7 +11,6 @@ def perform_safety_backup():
         shutil.copy("main.py", "main.py.backup")
         print("🛡️ Safety backup created.")
 
-# --- 🔑 THE 20 SEEDS ---
 SEEDS = [
     "alpha_prime_v26_secure_881", "alpha_nexus_v26_secure_102", "alpha_orbit_v26_secure_554",
     "alpha_pulse_v26_secure_923", "alpha_glory_v26_secure_317", "alpha_delta_v26_secure_441",
@@ -25,45 +24,41 @@ SEEDS = [
 bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
 ledger = get_ledger()
 
+async def find_funded_identity(seed):
+    """Scans indices 0-4 to find where the 9.6 FET is."""
+    print(f"🔍 Scanning seed indices for funds...")
+    for i in range(5):
+        ident = Identity.from_seed(seed, i)
+        bal = float(ledger.query_bank_balance(ident.address)) / 10**18
+        print(f"  Index {i}: {ident.address[:15]}... | {bal:.4f} FET")
+        if bal > 0.5:
+            print(f"⭐ FOUND FUNDS AT INDEX {i}")
+            return ident, i
+    return Identity.from_seed(seed, 0), 0
+
 def register_handlers(target_agent, name, wallet_addr):
     @target_agent.on_event("startup")
     async def startup_audit(ctx: Context):
-        try:
-            # Atomic balance check
-            bal_raw = ledger.query_bank_balance(wallet_addr)
-            bal = float(bal_raw) / 10**18
-            status = "✅ READY" if bal >= 0.05 else "❌ NO FUEL"
-            
-            print(f"[{status}] {name:20} | {bal:.4f} FET | {wallet_addr[:15]}...")
+        bal = float(ledger.query_bank_balance(wallet_addr)) / 10**18
+        status = "✅ READY" if bal >= 0.05 else "❌ NO FUEL"
+        print(f"[{status}] {name:20} | {bal:.4f} FET | {wallet_addr[:15]}...")
 
-            if name == BANKER_NAME and bal > 0.5:
-                print(f"⛽ {name} initiating direct-ledger fueling...")
-                # We build the list of targets inside the banker only
-                for s_seed in SEEDS:
-                    t_agent = Agent(seed=s_seed)
-                    t_wallet = str(t_agent.wallet.address())
-                    
-                    if t_wallet != wallet_addr:
-                        t_bal = float(ledger.query_bank_balance(t_wallet)) / 10**18
-                        if t_bal < 0.05:
-                            print(f"💸 Sending 0.1 FET to {t_wallet[:15]}...")
-                            try:
-                                # This is the most direct way to sign and send tokens
-                                await ledger.send_tokens(target_agent.wallet, t_wallet, int(0.1 * 10**18), "FET")
-                                await asyncio.sleep(3) # Heavy sleep to ensure sequence confirmation
-                            except Exception as inner_e:
-                                print(f"❌ Transfer Failed: {inner_e}")
-        except Exception as e:
-            print(f"⚠️ {name} System Error: {e}")
+# SCAN FOR BANKER FIRST
+loop = asyncio.get_event_loop()
+banker_identity, funded_index = loop.run_until_complete(find_funded_identity(SEEDS[0]))
 
 # BUILD FLEET
 for i, seed in enumerate(SEEDS):
     role = ["Oracle", "Notary", "Maker", "Broker"][min(i // 5, 3)]
     a_name = f"AlphaBeta-{role}-{i+1}"
     
-    agent_obj = Agent(name=a_name, seed=seed)
+    # Force the banker to use the identity that actually has the money
+    if a_name == BANKER_NAME:
+        agent_obj = Agent(name=a_name, seed=seed, index=funded_index)
+    else:
+        agent_obj = Agent(name=a_name, seed=seed)
+        
     w_addr = str(agent_obj.wallet.address())
-    
     register_handlers(agent_obj, a_name, w_addr)
     bureau.add(agent_obj)
 
