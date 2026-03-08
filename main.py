@@ -3,9 +3,7 @@ from uagents.network import get_ledger, wait_for_tx_to_complete
 from uagents.crypto import Identity
 
 # --- ⚙️ FUNDING SETUP ---
-# Your Banker Seed (Oracle-1)
 BANKER_SEED = "alpha_prime_v26_secure_881"
-# The other 19 seeds to fund
 SUB_SEEDS = [
     "alpha_nexus_v26_secure_102", "alpha_orbit_v26_secure_554", "alpha_pulse_v26_secure_923", 
     "alpha_glory_v26_secure_317", "alpha_delta_v26_secure_441", "alpha_titan_v26_secure_609", 
@@ -20,28 +18,36 @@ FUEL_AMOUNT = 50000000000000000  # 0.05 FET
 ledger = get_ledger()
 
 async def manual_fuel_run():
-    # 1. Initialize Banker
+    # 1. Initialize Banker with the correct prefix for the ledger
     banker_identity = Identity.from_seed(BANKER_SEED, 0)
-    print(f"🏦 Banker initialized: {banker_identity.address}")
+    # This is the "fetch1..." version of the address
+    banker_fetch_address = banker_identity.address
     
-    banker_bal = ledger.query_bank_balance(banker_identity.address)
-    print(f"💰 Current Banker Balance: {float(banker_bal)/10**18:.4f} FET")
+    print(f"🏦 Banker Identity: {banker_fetch_address}")
+    
+    try:
+        banker_bal = ledger.query_bank_balance(banker_fetch_address)
+        print(f"💰 Current Banker Balance: {float(banker_bal)/10**18:.4f} FET")
+    except Exception as e:
+        print(f"❌ Could not check balance: {e}")
+        return
 
     # 2. Loop through sub-agents
     for seed in SUB_SEEDS:
-        target_addr = Identity.from_seed(seed, 0).address
+        # Generate the fetch1 address for the recipient
+        target_identity = Identity.from_seed(seed, 0)
+        target_fetch_address = target_identity.address
         
         try:
-            print(f"⛽ Sending to {target_addr[:15]}...")
-            # Direct ledger transfer
-            tx = ledger.send_tokens(target_addr, FUEL_AMOUNT, "afet", banker_identity)
+            print(f"⛽ Sending 0.05 FET to {target_fetch_address}...")
+            tx = ledger.send_tokens(target_fetch_address, FUEL_AMOUNT, "afet", banker_identity)
             await wait_for_tx_to_complete(tx.tx_hash, ledger)
-            print(f"✅ Success. Tx: {tx.tx_hash[:10]}")
-            await asyncio.sleep(1) # Small gap
+            print(f"✅ Success. Tx: {tx.tx_hash[:12]}")
+            await asyncio.sleep(1.5) 
         except Exception as e:
-            print(f"❌ Error with {target_addr[:10]}: {e}")
+            print(f"❌ Error with {target_fetch_address[:15]}: {e}")
 
-    print("\n🏁 All transfers attempted. You can now go back to your main Bureau script!")
+    print("\n🏁 Fueling operation complete. Take your break!")
 
 if __name__ == "__main__":
     asyncio.run(manual_fuel_run())
