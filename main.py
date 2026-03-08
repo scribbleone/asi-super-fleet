@@ -22,47 +22,44 @@ SEEDS = [
 ]
 
 bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
-ALL_AGENT_ADDRESSES = []
+ALL_FETCH_ADDRESSES = []
 
-# Function to create handlers for each agent to avoid scope issues
-def add_agent_logic(agent, name, my_address):
+def add_agent_logic(agent, name, wallet_address):
     @agent.on_event("startup")
     async def startup_audit(ctx: Context):
-        bal = float(ctx.ledger.query_bank_balance(my_address)) / 10**18
+        # Using the wallet_address (fetch1...) for ledger queries
+        bal = float(ctx.ledger.query_bank_balance(wallet_address)) / 10**18
         print(f"--- 🤖 {name} Online ---")
-        print(f"💰 BAL: {bal:.4f} FET")
+        print(f"💰 WALLET: {wallet_address} | BAL: {bal:.4f} FET")
 
-        # Banker logic to fuel the fleet
         if name == BANKER_NAME and bal > 1.0:
             print("⛽ Banker checking fuel levels...")
-            for addr in ALL_AGENT_ADDRESSES:
-                if addr != my_address:
+            for addr in ALL_FETCH_ADDRESSES:
+                if addr != wallet_address:
                     t_bal = float(ctx.ledger.query_bank_balance(addr)) / 10**18
                     if t_bal < 0.05:
-                        print(f"💸 Sending 0.1 FET gas to {addr[:10]}...")
+                        print(f"💸 Fueling {addr[:12]}...")
                         await ctx.send_tokens(addr, int(0.1 * 10**18), "FET")
 
     @agent.on_interval(period=3600.0)
     async def sweep(ctx: Context):
-        bal = float(ctx.ledger.query_bank_balance(my_address)) / 10**18
+        bal = float(ctx.ledger.query_bank_balance(wallet_address)) / 10**18
         if bal > 5.0:
             sweep_val = int((bal - 0.5) * 10**18)
             await ctx.send_tokens(MASTER_WALLET, sweep_val, "FET")
-            print(f"🚀 {name} SWEPT: {bal-0.5} FET sent to Vault.")
+            print(f"🚀 {name} SWEPT to Vault.")
 
-# Create agents and attach logic
+# Setup
 for i, seed in enumerate(SEEDS):
-    if i < 5: role = "Oracle"
-    elif i < 10: role = "Notary"
-    elif i < 15: role = "Maker"
-    else: role = "Broker"
-    
+    role = ["Oracle", "Notary", "Maker", "Broker"][min(i // 5, 3)]
     name = f"AlphaBeta-{role}-{i+1}"
     a = Agent(name=name, seed=seed)
-    addr = str(a.address)
-    ALL_AGENT_ADDRESSES.append(addr)
     
-    add_agent_logic(a, name, addr)
+    # CRITICAL: We get the .wallet.address() which is 'fetch1...', NOT the .address which is 'agent1...'
+    f_addr = str(a.wallet.address())
+    ALL_FETCH_ADDRESSES.append(f_addr)
+    
+    add_agent_logic(a, name, f_addr)
     bureau.add(a)
 
 if __name__ == "__main__":
