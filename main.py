@@ -1,43 +1,54 @@
 import os
 import asyncio
-# THE 2026 STANDARD FOR FETCH.AI AUDITS
 from cosmpy.aerial.client import LedgerClient, NetworkConfig
 from cosmpy.aerial.wallet import LocalWallet
-from cosmpy.crypto.keypairs import PrivateKey
 
 async def audit_all_seeds():
+    # The secrets we are hunting for
     seeds_to_check = ["AGENT_SEED", "AGENT_SEED_GAS", "MASTER_WALLET_SEED"]
     
-    # Connect to the official Fetch.ai Mainnet
-    ledger = LedgerClient(NetworkConfig.fetchai_mainnet())
+    # Connect to Fetch.ai Mainnet
+    ledger = LedgerClient(NetworkConfig.fetch_mainnet())
     
     print("--- 🛡️ ALPHA MULTI-AUDIT STARTING ---")
     
     for seed_name in seeds_to_check:
         seed_value = os.getenv(seed_name)
         
-        if not seed_value:
-            print(f"⚠️ {seed_name}: Not found in GitHub Secrets.")
+        if not seed_value or len(seed_value.strip()) < 5:
+            print(f"⚠️ {seed_name}: Empty or not found.")
             continue
             
         try:
-            # Generate the wallet from your seed
-            # Note: Fetch.ai SDK uses 32-byte hex or specific phrase formats
-            private_key = PrivateKey(bytes.fromhex(seed_value) if len(seed_value) == 64 else seed_value.encode())
-            wallet = LocalWallet(private_key)
+            # Create wallet from mnemonic seed phrase
+            wallet = LocalWallet.from_mnemonic(seed_value)
             address = str(wallet.address())
             
-            # The exact command to find your 9.6 FET
+            # Query the balance
             balance = ledger.query_bank_balance(address)
             
             print(f"✅ FOUND {seed_name}")
             print(f"   📍 Address: {address}")
-            print(f"   💰 Balance: {balance / 10**18} FET") 
+            print(f"   💰 Balance: {balance / 10**18} FET")
+            
         except Exception as e:
-            print(f"❌ {seed_name} Check Failed: Ensure your Secret is a valid Seed Phrase or Hex.")
+            # If it's not a mnemonic, try treating it as a direct Private Key
+            try:
+                from cosmpy.crypto.keypairs import PrivateKey
+                priv_key = PrivateKey(bytes.fromhex(seed_value) if len(seed_value) == 64 else seed_value.encode())
+                wallet = LocalWallet(priv_key)
+                address = str(wallet.address())
+                balance = ledger.query_bank_balance(address)
+                print(f"✅ FOUND {seed_name} (Private Key)")
+                print(f"   📍 Address: {address}")
+                print(f"   💰 Balance: {balance / 10**18} FET")
+            except:
+                print(f"❌ {seed_name}: Could not decode seed/key format.")
 
     print("--- 🏁 AUDIT COMPLETE ---")
 
 if __name__ == "__main__":
-    asyncio.run(audit_all_seeds())
-    
+    # Standard 2026 async execution
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(audit_all_seeds())
+            
