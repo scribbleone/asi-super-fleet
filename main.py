@@ -1,6 +1,6 @@
 import os, shutil, asyncio
-from functools import partial
 from uagents import Agent, Bureau, Context
+from uagents.crypto import Identity
 
 # --- ⚙️ MASTER CONFIGURATION ---
 MASTER_WALLET = "fetch1k6qg2lv5jpt3sdy66g5gn3f63m6e9wesdz99rm" 
@@ -24,50 +24,59 @@ SEEDS = [
 
 bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
 
-# Pre-generate addresses for the Banker's fueling list
+# CALCULATE ADDRESSES OFFLINE (No network calls here)
 ALL_FETCH_ADDRS = []
 for s in SEEDS:
-    temp_a = Agent(seed=s)
-    ALL_FETCH_ADDRS.append(str(temp_a.wallet.address()))
+    # We use the Identity class to get the address without hitting the blockchain
+    ident = Identity.from_seed(s, 0)
+    # The uagents lib provides the wallet address derived from the identity
+    ALL_FETCH_ADDRS.append(ident.address)
 
-# --- 🛠️ HANDLER GENERATOR ---
-# Using a separate function ensures the 'agent_wallet' remains an object and NOT a string
-def register_handlers(target_agent, name, agent_wallet, my_addr):
-    
+def register_handlers(target_agent, name, my_addr):
+    # Capture the wallet object directly from the agent
+    agent_wallet = target_agent.wallet
+
     @target_agent.on_event("startup")
     async def startup_audit(ctx: Context):
-        bal = float(ctx.ledger.query_bank_balance(my_addr)) / 10**18
-        print(f"--- 🤖 {name} Online ---")
-        print(f"💰 BAL: {bal:.4f} FET")
+        # Only check balance once per agent startup
+        try:
+            bal = float(ctx.ledger.query_bank_balance(my_addr)) / 10**18
+            print(f"--- 🤖 {name} Online ---")
+            print(f"💰 BAL: {bal:.4f} FET")
 
-        if name == BANKER_NAME and bal > 1.0:
-            print("⛽ Banker checking fuel levels...")
-            for target in ALL_FETCH_ADDRS:
-                if target != my_addr:
-                    t_bal = float(ctx.ledger.query_bank_balance(target)) / 10**18
-                    if t_bal < 0.05:
-                        print(f"💸 Fueling {target[:12]}...")
-                        await ctx.ledger.send_tokens(agent_wallet, target, int(0.1 * 10**18), "FET")
+            if name == BANKER_NAME and bal > 1.0:
+                print("⛽ Banker checking fuel levels...")
+                for target in ALL_FETCH_ADDRS:
+                    if target != my_addr:
+                        # Only query ledger if banker has funds
+                        t_bal = float(ctx.ledger.query_bank_balance(target)) / 10**18
+                        if t_bal < 0.05:
+                            print(f"💸 Fueling {target[:12]}...")
+                            await ctx.ledger.send_tokens(agent_wallet, target, int(0.1 * 10**18), "FET")
+        except Exception as e:
+            print(f"⚠️ {name} Ledger Error: {e}")
 
     @target_agent.on_interval(period=3600.0)
     async def sweep(ctx: Context):
-        bal = float(ctx.ledger.query_bank_balance(my_addr)) / 10**18
-        if bal > 5.0:
-            sweep_val = int((bal - 0.5) * 10**18)
-            # my_wallet is explicitly the object passed during registration
-            await ctx.ledger.send_tokens(agent_wallet, MASTER_WALLET, sweep_val, "FET")
-            print(f"🚀 {name} SWEPT to Vault.")
+        try:
+            bal = float(ctx.ledger.query_bank_balance(my_addr)) / 10**18
+            if bal > 5.0:
+                sweep_val = int((bal - 0.5) * 10**18)
+                await ctx.ledger.send_tokens(agent_wallet, MASTER_WALLET, sweep_val, "FET")
+                print(f"🚀 {name} SWEPT to Vault.")
+        except:
+            pass
 
-# Setup Fleet
+# Create Fleet
 for i, seed in enumerate(SEEDS):
     role = ["Oracle", "Notary", "Maker", "Broker"][min(i // 5, 3)]
     a_name = f"AlphaBeta-{role}-{i+1}"
     
+    # Initialize the agent normally
     agent_obj = Agent(name=a_name, seed=seed)
     current_addr = str(agent_obj.wallet.address())
     
-    # Register handlers using the explicit objects
-    register_handlers(agent_obj, a_name, agent_obj.wallet, current_addr)
+    register_handlers(agent_obj, a_name, current_addr)
     bureau.add(agent_obj)
 
 if __name__ == "__main__":
