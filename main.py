@@ -1,17 +1,15 @@
 import os
 import asyncio
-import time
-# UPDATED IMPORTS FOR 2026 LIBRARIES
-from fetchai import Ledger
-from fetchai.crypto import Identity
+# THE 2026 STANDARD FOR FETCH.AI AUDITS
+from cosmpy.aerial.client import LedgerClient, NetworkConfig
+from cosmpy.aerial.wallet import LocalWallet
+from cosmpy.crypto.keypairs import PrivateKey
 
 async def audit_all_seeds():
-    # The List of Secrets we are hunting for
     seeds_to_check = ["AGENT_SEED", "AGENT_SEED_GAS", "MASTER_WALLET_SEED"]
     
-    # Setup the Ledger (Mainnet)
-    ledger = Ledger() 
-    start_time = time.time()
+    # Connect to the official Fetch.ai Mainnet
+    ledger = LedgerClient(NetworkConfig.fetchai_mainnet())
     
     print("--- 🛡️ ALPHA MULTI-AUDIT STARTING ---")
     
@@ -23,20 +21,23 @@ async def audit_all_seeds():
             continue
             
         try:
-            # Create the identity from the seed
-            identity = Identity.from_seed(seed_value)
-            address = identity.address
-            # Query the balance
+            # Generate the wallet from your seed
+            # Note: Fetch.ai SDK uses 32-byte hex or specific phrase formats
+            private_key = PrivateKey(bytes.fromhex(seed_value) if len(seed_value) == 64 else seed_value.encode())
+            wallet = LocalWallet(private_key)
+            address = str(wallet.address())
+            
+            # The exact command to find your 9.6 FET
             balance = ledger.query_bank_balance(address)
             
             print(f"✅ FOUND {seed_name}")
             print(f"   📍 Address: {address}")
-            print(f"   💰 Balance: {balance} FET")
+            print(f"   💰 Balance: {balance / 10**18} FET") 
         except Exception as e:
-            print(f"❌ Error auditing {seed_name}: {str(e)}")
+            print(f"❌ {seed_name} Check Failed: Ensure your Secret is a valid Seed Phrase or Hex.")
 
-    print(f"--- 🏁 AUDIT COMPLETE (Took {int(time.time() - start_time)}s) ---")
+    print("--- 🏁 AUDIT COMPLETE ---")
 
 if __name__ == "__main__":
-    asyncio.run(asyncio.wait_for(audit_all_seeds(), timeout=120))
+    asyncio.run(audit_all_seeds())
     
