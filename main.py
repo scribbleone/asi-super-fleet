@@ -1,6 +1,6 @@
 import os, shutil, asyncio
 from uagents import Agent, Bureau, Context
-from uagents.network import get_ledger, get_mainnet_prefix
+from uagents.network import get_ledger
 from uagents.crypto import Identity, encode_bech32
 
 # --- ⚙️ CONFIGURATION ---
@@ -22,23 +22,20 @@ SEEDS = [
 ]
 
 bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
-ledger = get_ledger() # This defaults to Mainnet
+# Using get_ledger() but we will manually verify the balance against the chain
+ledger = get_ledger()
 
 async def find_funded_index(seed):
     print("🔍 Scanning Mainnet for the 9.6 FET...")
-    # We will test a few different ways the wallet might be derived
     for i in range(5):
         ident = Identity.from_seed(seed, i)
-        # Convert to the 'fetch1' format the ledger actually understands
         fetch_addr = encode_bech32("fetch", ident.address_bytes)
-        
         try:
             bal_raw = ledger.query_bank_balance(fetch_addr)
             bal = float(bal_raw) / 10**18
-            print(f"  [Index {i}] Address: {fetch_addr} | Bal: {bal:.4f} FET")
-            
+            print(f"  [Index {i}] {fetch_addr} | {bal:.4f} FET")
             if bal > 0.1:
-                print(f"⭐ FOUND FUNDS AT INDEX {i}!")
+                print(f"⭐ SUCCESS! FOUND FUNDS AT INDEX {i}!")
                 return i
         except Exception as e:
             print(f"  [Index {i}] Query failed: {e}")
@@ -50,7 +47,7 @@ def register_handlers(target_agent, name, wallet_addr):
         try:
             bal_raw = ledger.query_bank_balance(wallet_addr)
             bal = float(bal_raw) / 10**18
-            status = "✅ READY" if bal >= 0.01 else "❌ NO FUEL"
+            status = "✅ READY" if bal >= 0.05 else "❌ NO FUEL"
             print(f"[{status}] {name:20} | {bal:.4f} FET | {wallet_addr[:15]}...")
         except: pass
 
@@ -63,9 +60,10 @@ for i, seed in enumerate(SEEDS):
     role = ["Oracle", "Notary", "Maker", "Broker"][min(i // 5, 3)]
     a_name = f"AlphaBeta-{role}-{i+1}"
     
-    # Correcting the initialization: use the seed and the correct index
+    # We use the index that we found the money on
     agent_obj = Agent(name=a_name, seed=seed) 
-    # We manually override the identity if the index was not 0
+    
+    # Manual identity shift if money isn't at Index 0
     if found_idx != 0:
         new_ident = Identity.from_seed(seed, found_idx)
         agent_obj._identity = new_ident
