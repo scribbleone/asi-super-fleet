@@ -25,23 +25,33 @@ bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
 ledger = get_ledger()
 
 async def find_funded_index(seed):
-    """Scans indices 0-9 to locate the 9.6 FET."""
+    """Scans indices for funds by forcing fetch1 address format."""
     print("🔍 Scanning seed indices for funds...")
     for i in range(10):
-        # Correct way to derive the identity for a specific index
         ident = Identity.from_seed(seed, i)
-        wallet_addr = ident.address
         
+        # This is the critical fix: manually deriving the fetch1 address
+        # We use the agent's internal wallet logic to get the correct prefix
+        temp_agent = Agent(seed=seed, index=i) if hasattr(Agent, 'index') else Agent(seed=seed)
+        wallet_addr = str(temp_agent.wallet.address())
+        
+        # If it still starts with 'agent', we strip and re-prefix or use the raw address
+        if wallet_addr.startswith("agent"):
+            # The ledger needs the fetch1 version of the same public key
+            from uagents.crypto import encode_bech32
+            raw_address = ident.address_bytes
+            wallet_addr = encode_bech32("fetch", raw_address)
+
         try:
             bal_raw = ledger.query_bank_balance(wallet_addr)
             bal = float(bal_raw) / 10**18
             print(f"  Index {i}: {wallet_addr} | {bal:.4f} FET")
             
-            if bal > 0.5:
+            if bal > 0.1:
                 print(f"⭐ SUCCESS! FOUND {bal:.4f} FET AT INDEX {i}")
                 return i
         except Exception as e:
-            print(f"  Index {i}: Error: {e}")
+            print(f"  Index {i} ({wallet_addr[:10]}...): Ledger rejected request.")
             
     return 0
 
@@ -65,13 +75,13 @@ for i, seed in enumerate(SEEDS):
     role = ["Oracle", "Notary", "Maker", "Broker"][min(i // 5, 3)]
     a_name = f"AlphaBeta-{role}-{i+1}"
     
-    # Generate the identity using the found index
     agent_identity = Identity.from_seed(seed, funded_index)
-    
-    # Initialize agent with the explicit identity
     agent_obj = Agent(name=a_name, identity=agent_identity)
     
-    w_addr = str(agent_obj.wallet.address())
+    # Use the encoded fetch address for our internal tracking/audits
+    from uagents.crypto import encode_bech32
+    w_addr = encode_bech32("fetch", agent_identity.address_bytes)
+    
     register_handlers(agent_obj, a_name, w_addr)
     bureau.add(agent_obj)
 
