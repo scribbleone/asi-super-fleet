@@ -69,4 +69,3 @@ for i, seed in enumerate(SEEDS):
 if __name__ == "__main__":
     perform_safety_backup()
     bureau.run()
-    
