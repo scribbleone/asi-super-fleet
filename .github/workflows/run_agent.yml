@@ -26,5 +26,6 @@ jobs:
           AGENT_SEED: ${{ secrets.AGENT_SEED }}
           AGENT_SEED_GAS: ${{ secrets.AGENT_SEED_GAS }}
           MASTER_WALLET_SEED: ${{ secrets.MASTER_WALLET_SEED }}
+          AGENT_SEED_AUDIT: ${{ secrets.AGENT_SEED_AUDIT }} # <--- NEW LINE ADDED
         run: python main.py
         
