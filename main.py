@@ -24,16 +24,21 @@ SEEDS = [
 bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
 ledger = get_ledger()
 
+def get_clean_fetch_addr(identity_obj):
+    """Slices the public key to the correct 33-byte length for Cosmpy."""
+    pk_hex = getattr(identity_obj, 'pub_key', getattr(identity_obj, 'public_key', None))
+    raw_bytes = bytes.fromhex(pk_hex)
+    # If it's 35 bytes (standard uagents), slice the last 33. If 33, use all.
+    clean_bytes = raw_bytes[-33:] 
+    return str(Address(clean_bytes, prefix="fetch"))
+
 async def find_funded_index(seed):
     print("🔍 Final Scan: Locating the 9.6 FET...")
     for i in range(5):
         try:
             from uagents.crypto import Identity
             ident = Identity.from_seed(seed, i)
-            # Fix: Using 'pub_key' as requested by the error log
-            pk_hex = getattr(ident, 'pub_key', getattr(ident, 'public_key', None))
-            raw_pubkey_bytes = bytes.fromhex(pk_hex)
-            fetch_addr = str(Address(raw_pubkey_bytes, prefix="fetch"))
+            fetch_addr = get_clean_fetch_addr(ident)
             
             bal_raw = ledger.query_bank_balance(fetch_addr)
             bal = float(bal_raw) / 10**18
@@ -71,11 +76,7 @@ for i, seed in enumerate(SEEDS):
     agent_obj = Agent(name=a_name, seed=seed)
     agent_obj._identity = new_ident
     
-    # Extract fetch address using the corrected attribute
-    pk_hex = getattr(agent_obj._identity, 'pub_key', getattr(agent_obj._identity, 'public_key', None))
-    pub_bytes = bytes.fromhex(pk_hex)
-    fetch_addr = str(Address(pub_bytes, prefix="fetch"))
-    
+    fetch_addr = get_clean_fetch_addr(agent_obj._identity)
     register_handlers(agent_obj, a_name, fetch_addr)
     bureau.add(agent_obj)
 
