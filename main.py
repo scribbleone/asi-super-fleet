@@ -2,11 +2,8 @@ import os, shutil, asyncio
 from uagents import Agent, Bureau, Context
 
 # --- ⚙️ MASTER CONFIGURATION ---
-# YOUR REAL BANK VAULT ADDRESS
-MASTER_WALLET = "fetch1k6qg2lv5jpt3sdy66g5gn3f63m6e9wesdz99rm"
-
-# THE FUNDED ACCOUNT (Alpha 1)
-BANKER_SEED = "alpha_prime_v26_secure_881"
+MASTER_WALLET = "fetch1k6qg2lv5jpt3sdy66g5gn3f63m6e9wesdz99rm" # Your Bank Vault
+BANKER_NAME = "AlphaBeta-Oracle-1"
 
 def perform_safety_backup():
     if os.path.exists("main.py"):
@@ -25,45 +22,52 @@ SEEDS = [
 ]
 
 bureau = Bureau(port=8000, endpoint=["http://127.0.0.1:8000/submit"])
-
-# We need to pre-generate addresses to help the Banker find them
 ALL_AGENT_ADDRESSES = []
 
+# First pass: Create agents and collect addresses
+agents = []
 for i, seed in enumerate(SEEDS):
-    # Role Assignment
-    if i < 5: role, job = "Oracle", "Price Feed"
-    elif i < 10: role, job = "Notary", "Authentication"
-    elif i < 15: role, job = "Maker", "Liquidity"
-    else: role, job = "Broker", "Mediation"
+    if i < 5: role = "Oracle"
+    elif i < 10: role = "Notary"
+    elif i < 15: role = "Maker"
+    else: role = "Broker"
+    
+    name = f"AlphaBeta-{role}-{i+1}"
+    a = Agent(name=name, seed=seed)
+    agents.append(a)
+    ALL_AGENT_ADDRESSES.append(str(a.wallet.address()))
 
-    agent = Agent(name=f"AlphaBeta-{role}-{i+1}", seed=seed)
-    ALL_AGENT_ADDRESSES.append(str(agent.wallet.address()))
-
-    @agent.on_event("startup")
+for a in agents:
+    @a.on_event("startup")
     async def startup_audit(ctx: Context):
-        bal = float(ctx.ledger.query_bank_balance(ctx.wallet.address())) / 10**18
+        # Corrected access: ctx.agent.wallet
+        my_addr = str(ctx.agent.wallet.address())
+        bal = float(ctx.ledger.query_bank_balance(my_addr)) / 10**18
         print(f"--- 🤖 {ctx.agent.name} Online ---")
-        print(f"💰 BAL: {bal:.4f} FET | 🏦 TARGET: {MASTER_WALLET}")
+        print(f"💰 BAL: {bal:.4f} FET")
 
-        # SPECIAL LOGIC FOR ALPHA 1 (The Banker)
-        if ctx.agent.name == "AlphaBeta-Oracle-1":
-            print("⛽ Banker detected. Checking fleet fuel levels...")
+        # Banker logic to fuel the fleet
+        if ctx.agent.name == BANKER_NAME and bal > 1.0:
+            print("⛽ Banker checking fuel levels...")
             for addr in ALL_AGENT_ADDRESSES:
-                if addr != str(ctx.wallet.address()):
-                    target_bal = float(ctx.ledger.query_bank_balance(addr)) / 10**18
-                    if target_bal < 0.05: # If they have almost nothing
-                        print(f"💸 Sending gas to {addr[:10]}...")
+                if addr != my_addr:
+                    t_bal = float(ctx.ledger.query_bank_balance(addr)) / 10**18
+                    if t_bal < 0.05:
+                        print(f"💸 Sending 0.1 FET gas to {addr[:10]}...")
                         await ctx.send_tokens(addr, int(0.1 * 10**18), "FET")
 
-    @agent.on_interval(period=3600.0)
-    async def sweep(ctx: Context):
-        bal = float(ctx.ledger.query_bank_balance(ctx.wallet.address())) / 10**18
+    @a.on_interval(period=3600.0)
+    async def sweep_and_track(ctx: Context):
+        my_addr = str(ctx.agent.wallet.address())
+        bal = float(ctx.ledger.query_bank_balance(my_addr)) / 10**18
+        
         if bal > 5.0:
             sweep_val = int((bal - 0.5) * 10**18)
             await ctx.send_tokens(MASTER_WALLET, sweep_val, "FET")
-            print(f"🚀 {ctx.agent.name} swept earnings to Vault.")
-
-    bureau.add(agent)
+            print(f"🚀 {ctx.agent.name} SWEPT: {bal-0.5} FET sent to Vault.")
+            # We can log this to a file in a later step once basic run works
+            
+    bureau.add(a)
 
 if __name__ == "__main__":
     perform_safety_backup()
