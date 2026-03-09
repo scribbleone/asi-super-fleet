@@ -2,7 +2,6 @@ import asyncio
 import os
 from uagents import Agent, Context
 from uagents.crypto import Identity
-from cosmpy.crypto.keypairs import PrivateKey
 
 # --- 🔒 THE ABSOLUTE 1:1 LOCK ---
 HEX_KEY = os.environ.get("AGENT_1_KEY")
@@ -11,11 +10,10 @@ if not HEX_KEY:
     print("❌ ERROR: AGENT_1_KEY not found in GitHub Secrets!")
     exit()
 
-# We convert the HEX string into a PrivateKey object first.
-# Then we tell Identity to use that specific key. 
-# This bypasses the 'seed' derivation entirely.
-priv_key = PrivateKey(bytes.fromhex(HEX_KEY))
-agent_identity = Identity(priv_key)
+# We use from_sk (Secret Key). 
+# This converts your HEX string directly into the Agent's soul.
+# It is a 1:1 mapping. No 'derivation paths' or 'indexes' allowed.
+agent_identity = Identity.from_sk(HEX_KEY)
 
 agent = Agent(
     name="alpha_1",
@@ -33,11 +31,11 @@ async def verify_identity(ctx: Context):
     expected = "fetch1c6djwc0jytzkpzdxwamlq62huwnhqh59ynyyl0"
     
     if agent.address == expected:
-        ctx.logger.info("✅ SUCCESS: 1:1 MATCH! The variations are dead.")
+        ctx.logger.info("✅ SUCCESS: 1:1 MATCH! The 50,000 variants are dead.")
     else:
-        ctx.logger.info("❌ MISMATCH STILL.")
-        ctx.logger.info(f"The code produced: {agent.address}")
-        ctx.logger.info("Double-check that the HEX_KEY in Secrets matches the one in your phone.")
+        ctx.logger.info("❌ MISMATCH.")
+        ctx.logger.info(f"Agent generated: {agent.address}")
+        ctx.logger.info("This means the Hex Key in Secrets is not the one for that wallet.")
 
 if __name__ == "__main__":
     agent.run()
