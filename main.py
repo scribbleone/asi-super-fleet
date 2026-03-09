@@ -4,7 +4,7 @@ from cosmpy.aerial.wallet import LocalWallet
 from cosmpy.crypto.keypairs import PrivateKey
 
 # --- 🎯 THE TEST ZONE ---
-SECRET_PHRASE = "just done free bush call angry hip juice pine sky salt cactus" 
+SECRET_PHRASE = "brown lorry mountain eye bolt raise blend grave house field muck din" 
 TARGET = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
 
 async def main():
