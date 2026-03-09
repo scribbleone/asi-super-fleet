@@ -10,7 +10,7 @@ from cosmpy.crypto.keypairs import PrivateKey
 # --- 🎯 THE MASTER ACCESS ---
 # PASTE YOUR 12 WORDS BETWEEN THE QUOTES BELOW (Line 12)
 # Example: "apple banana cherry..."
-MNEMONIC_PHRASE = "just done free bush call angry hip juice pine sky salt cactus" 
+MNEMONIC_PHRASE = "brown lorry mountain eye bolt raise blend grave house field muck din" 
 
 FUNDED_ADDR = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
 
