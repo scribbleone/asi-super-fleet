@@ -2,7 +2,7 @@ import asyncio, bech32
 from uagents.network import wait_for_tx_to_complete
 from uagents.crypto import Identity
 from cosmpy.aerial.client import LedgerClient, NetworkConfig
-from cosmpy.aerial.wallet import LocalWallet # The missing piece
+from cosmpy.aerial.wallet import LocalWallet
 
 # --- 🎯 THE LOCKED TRUTH ---
 FUNDED_ADDR = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
@@ -28,8 +28,7 @@ SUB_SEEDS = [
     "beta_matrix_v26_secure_551"
 ]
 
-# 0.05 FET
-FUEL_AMOUNT = 50000000000000000 
+FUEL_AMOUNT = 50000000000000000 # 0.05 FET
 
 def get_fetch_address(seed):
     ident = Identity.from_seed(seed, 0)
@@ -40,9 +39,8 @@ async def final_fuel_run():
     # 1. Create the Banker Identity
     banker_ident = Identity.from_seed(BANKER_SEED, 0)
     
-    # 2. Convert it to a LocalWallet so Cosmpy can "call" the signing logic correctly
-    # This solves the 'str' object is not callable error
-    banker_wallet = LocalWallet(banker_ident._private_key)
+    # 2. Corrected attribute name: .private_key (no underscore)
+    banker_wallet = LocalWallet(banker_ident.private_key)
     
     print(f"📡 Querying Fetch Mainnet...")
     bal = ledger.query_bank_balance(FUNDED_ADDR)
@@ -53,12 +51,12 @@ async def final_fuel_run():
         try:
             print(f"⛽ Sending 0.05 to {target_addr[:15]}...")
             
-            # Using the Wallet object instead of the Identity object
+            # This should now sign successfully with the LocalWallet object
             tx = ledger.send_tokens(target_addr, FUEL_AMOUNT, "afet", banker_wallet)
             
             await wait_for_tx_to_complete(tx.tx_hash, ledger)
             print(f"✅ Success: {tx.tx_hash[:10]}")
-            await asyncio.sleep(1) # Gentle pace for the blockchain
+            await asyncio.sleep(1) 
         except Exception as e:
             print(f"❌ Error during transfer: {e}")
 
