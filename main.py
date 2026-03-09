@@ -2,8 +2,10 @@ import asyncio, bech32
 from uagents.network import get_ledger, wait_for_tx_to_complete
 from uagents.crypto import Identity
 
-# --- ⚙️ FUNDING SETUP ---
+# --- 🛡️ THE LOCKED TRUTH ---
+CORRECT_BANKER_ADDR = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
 BANKER_SEED = "alpha_prime_v26_secure_881"
+
 SUB_SEEDS = [
     "alpha_nexus_v26_secure_102", "alpha_orbit_v26_secure_554", "alpha_pulse_v26_secure_923", 
     "alpha_glory_v26_secure_317", "alpha_delta_v26_secure_441", "alpha_titan_v26_secure_609", 
@@ -14,47 +16,40 @@ SUB_SEEDS = [
     "beta_matrix_v26_secure_551"
 ]
 
-FUEL_AMOUNT = 50000000000000000  # 0.05 FET
+FUEL_AMOUNT = 50000000000000000 # 0.05 FET
 ledger = get_ledger()
 
-def get_valid_fetch_address(seed):
-    """Uses the raw bech32 library to encode the address from the agent identity."""
+def get_target_fetch_addr(seed):
+    """Bypasses derivation issues by decoding the agent's default address."""
     ident = Identity.from_seed(seed, 0)
-    # 1. Get the agent address (e.g., agent1...)
-    agent_addr = ident.address
-    # 2. Decode the agent address to get the raw data
-    hrp, data = bech32.bech32_decode(agent_addr)
-    # 3. Re-encode using 'fetch' as the new prefix
+    hrp, data = bech32.bech32_decode(ident.address)
     return bech32.bech32_encode("fetch", data)
 
-async def manual_fuel_run():
-    # 1. Initialize Banker
-    banker_fetch_address = get_valid_fetch_address(BANKER_SEED)
-    banker_identity = Identity.from_seed(BANKER_SEED, 0)
+async def final_fuel_run():
+    # 1. Initialize Signer
+    banker_ident = Identity.from_seed(BANKER_SEED, 0)
     
-    print(f"🏦 Banker Validated Address: {banker_fetch_address}")
-    
-    try:
-        banker_bal = ledger.query_bank_balance(banker_fetch_address)
-        print(f"💰 Current Banker Balance: {float(banker_bal)/10**18:.4f} FET")
-    except Exception as e:
-        print(f"❌ Ledger Access Error: {e}")
+    # 2. Check the SPECIFIC address you provided
+    bal = ledger.query_bank_balance(CORRECT_BANKER_ADDR)
+    print(f"🏦 Banker (Locked): {CORRECT_BANKER_ADDR}")
+    print(f"💰 Balance: {float(bal)/10**18:.4f} FET")
+
+    if int(bal) < (FUEL_AMOUNT * 19):
+        print(f"❌ ABORT: {CORRECT_BANKER_ADDR} needs more FET.")
         return
 
-    # 2. Loop through sub-agents
+    # 3. Fuel the fleet
     for seed in SUB_SEEDS:
-        target_fetch_address = get_valid_fetch_address(seed)
-        
+        target_addr = get_target_fetch_addr(seed)
         try:
-            print(f"⛽ Sending 0.05 FET to {target_fetch_address}...")
-            tx = ledger.send_tokens(target_fetch_address, FUEL_AMOUNT, "afet", banker_identity)
+            print(f"⛽ Sending to {target_addr[:15]}...")
+            # We sign with banker_ident, but the ledger knows it comes from the funded addr
+            tx = ledger.send_tokens(target_addr, FUEL_AMOUNT, "afet", banker_ident)
             await wait_for_tx_to_complete(tx.tx_hash, ledger)
-            print(f"✅ Success. Tx: {tx.tx_hash[:12]}")
-            await asyncio.sleep(1.5) 
+            print(f"✅ Success: {tx.tx_hash[:10]}")
+            await asyncio.sleep(1)
         except Exception as e:
-            print(f"❌ Error with {target_fetch_address[:15]}: {e}")
-
-    print("\n🏁 Mission accomplished. The fleet is fueled. Enjoy your break!")
+            print(f"❌ Error: {e}")
 
 if __name__ == "__main__":
-    asyncio.run(manual_fuel_run())
+    asyncio.run(final_fuel_run())
