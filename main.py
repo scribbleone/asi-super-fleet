@@ -3,6 +3,7 @@ from uagents.network import wait_for_tx_to_complete
 from uagents.crypto import Identity
 from cosmpy.aerial.client import LedgerClient, NetworkConfig
 from cosmpy.aerial.wallet import LocalWallet
+from cosmpy.crypto.keypairs import PrivateKey # The bridge object
 
 # --- 🎯 THE LOCKED TRUTH ---
 FUNDED_ADDR = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
@@ -39,8 +40,10 @@ async def final_fuel_run():
     # 1. Create the Banker Identity
     banker_ident = Identity.from_seed(BANKER_SEED, 0)
     
-    # 2. Corrected attribute name: .private_key (no underscore)
-    banker_wallet = LocalWallet(banker_ident.private_key)
+    # 2. Convert the hex string into a real PrivateKey object
+    # This provides the .public_key attribute that LocalWallet is looking for
+    priv_key_obj = PrivateKey(bytes.fromhex(banker_ident.private_key))
+    banker_wallet = LocalWallet(priv_key_obj)
     
     print(f"📡 Querying Fetch Mainnet...")
     bal = ledger.query_bank_balance(FUNDED_ADDR)
@@ -51,7 +54,7 @@ async def final_fuel_run():
         try:
             print(f"⛽ Sending 0.05 to {target_addr[:15]}...")
             
-            # This should now sign successfully with the LocalWallet object
+            # The transaction is now signed by a fully valid Wallet object
             tx = ledger.send_tokens(target_addr, FUEL_AMOUNT, "afet", banker_wallet)
             
             await wait_for_tx_to_complete(tx.tx_hash, ledger)
