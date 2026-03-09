@@ -1,42 +1,26 @@
-import asyncio
+import os
 from uagents.crypto import Identity
-from cosmpy.aerial.wallet import LocalWallet
-from cosmpy.crypto.keypairs import PrivateKey
 
-# --- 🎯 THE TARGET ---
-FUNDED_ADDR = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
-# Try your primary 12-word phrase here
-SEED_PHRASE = "brown lorry mountain eye bolt raise blend grave house field muck din" 
-
-async def recover_agent_route():
-    print(f"🕵️ Searching for route to {FUNDED_ADDR}...\n")
-
-    # PATH A: The "Direct Mnemonic" Route (Standard Wallet)
+def extract_current_identity():
+    print("🔍 Searching for active Agent 1 identity...")
+    
+    # This looks for the default 'agent.utils' or '.env' where uagents saves keys
+    # If you are running this in a folder with an existing agent, it should find it.
     try:
-        w_a = LocalWallet.from_mnemonic(SEED_PHRASE, prefix="fetch")
-        addr_a = str(w_a.address())
-        print(f"Path A (Standard Mnemonic): {addr_a}")
-        if addr_a == FUNDED_ADDR: print("✅ MATCH FOUND IN PATH A!")
-    except: pass
+        # Check if an identity is already loaded in the environment
+        agent_address = os.environ.get("AGENT_ADDRESS")
+        print(f"Current Environment Address: {agent_address}")
+        
+        # We are going to attempt to find any local .env files
+        if os.path.exists(".env"):
+            with open(".env", "r") as f:
+                print("📄 Found .env file. Content (Redacted for security):")
+                for line in f:
+                    if "SEED" in line or "PRIVATE_KEY" in line:
+                        print(f"Found a key entry: {line.split('=')[0]}...")
 
-    # PATH B: The "Identity String" Route (Default uagents)
-    try:
-        ident_b = Identity.from_seed(SEED_PHRASE, 0)
-        w_b = LocalWallet(PrivateKey(bytes.fromhex(ident_b.private_key)), prefix="fetch")
-        addr_b = str(w_b.address())
-        print(f"Path B (Identity String):   {addr_b}")
-        if addr_b == FUNDED_ADDR: print("✅ MATCH FOUND IN PATH B!")
-    except: pass
-
-    # PATH C: The "Legacy Ledger" Route
-    try:
-        from cosmpy.crypto.address import Address
-        ident_c = Identity.from_seed(SEED_PHRASE, 0)
-        # This checks if the prefixing is causing the 'scramble'
-        addr_c = Address(bytes.fromhex(ident_c.address), prefix="fetch")
-        print(f"Path C (Legacy Prefix):     {addr_c}")
-        if str(addr_c) == FUNDED_ADDR: print("✅ MATCH FOUND IN PATH C!")
-    except: pass
+    except Exception as e:
+        print(f"❌ Error during extraction: {e}")
 
 if __name__ == "__main__":
-    asyncio.run(recover_agent_route())
+    extract_current_identity()
