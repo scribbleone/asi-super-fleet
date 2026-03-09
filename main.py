@@ -28,40 +28,39 @@ SUB_SEEDS = [
     "beta_matrix_v26_secure_551"
 ]
 
-# 0.05 FET
 FUEL_AMOUNT = 50000000000000000 
 
-def get_fetch_address(seed, index=0):
-    ident = Identity.from_seed(seed, index)
-    hrp, data = bech32.bech32_decode(ident.address)
+def to_fetch_addr(agent_addr):
+    hrp, data = bech32.bech32_decode(agent_addr)
     return bech32.bech32_encode("fetch", data)
 
 async def final_fuel_run():
-    print("🔎 Searching for the correct wallet index...")
+    print(f"🔎 Deep-searching paths for {FUNDED_ADDR}...")
     banker_wallet = None
     
-    # Check the first 20 indices to find where your 9.6 FET is hiding
-    for i in range(21):
-        temp_ident = Identity.from_seed(BANKER_SEED, i)
-        # Convert bech32 'agent' prefix to 'fetch' to compare
-        hrp, data = bech32.bech32_decode(temp_ident.address)
-        current_addr = bech32.bech32_encode("fetch", data)
-        
-        if current_addr == FUNDED_ADDR:
-            print(f"✅ Found it! Index {i} matches your funded address.")
-            priv_key_obj = PrivateKey(bytes.fromhex(temp_ident.private_key))
-            banker_wallet = LocalWallet(priv_key_obj)
+    # We check indices 0-10 across common paths
+    for i in range(11):
+        # Path A: Standard uAgents path
+        ident_a = Identity.from_seed(BANKER_SEED, i)
+        if to_fetch_addr(ident_a.address) == FUNDED_ADDR:
+            print(f"✅ Found! Path: Standard, Index: {i}")
+            banker_wallet = LocalWallet(PrivateKey(bytes.fromhex(ident_a.private_key)))
             break
-    
+
+        # Path B: Alternative wallet path (checking if library allows)
+        # Note: If this fails, we will try a manual cosmpy derivation in the next step
+        
     if not banker_wallet:
-        print(f"❌ Could not find index for {FUNDED_ADDR}. Double-check the seed/address.")
+        print("🛑 Still not found. Let's check the absolute default index 0 one last time.")
+        ident_zero = Identity.from_seed(BANKER_SEED, 0)
+        print(f"Index 0 actually derives: {to_fetch_addr(ident_zero.address)}")
         return
 
     bal = ledger.query_bank_balance(FUNDED_ADDR)
     print(f"💰 Confirmed Balance: {float(bal)/10**18:.4f} FET")
 
     for seed in SUB_SEEDS:
-        target_addr = get_fetch_address(seed)
+        target_addr = to_fetch_addr(Identity.from_seed(seed, 0).address)
         try:
             print(f"⛽ Sending 0.05 to {target_addr[:15]}...")
             tx = ledger.send_tokens(target_addr, FUEL_AMOUNT, "afet", banker_wallet)
@@ -69,7 +68,7 @@ async def final_fuel_run():
             print(f"✅ Success: {tx.tx_hash[:10]}")
             await asyncio.sleep(1) 
         except Exception as e:
-            print(f"❌ Error during transfer: {e}")
+            print(f"❌ Error: {e}")
 
 if __name__ == "__main__":
     asyncio.run(final_fuel_run())
