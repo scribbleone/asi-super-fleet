@@ -1,33 +1,39 @@
 import asyncio
 import os
+from uagents import Agent, Context
 from uagents.crypto import Identity
-from cosmpy.aerial.wallet import LocalWallet
-from cosmpy.crypto.keypairs import PrivateKey
 
-# --- 🎯 THE VAULT ACCESS ---
-# This looks for a GitHub Secret. If it doesn't find one, it uses a fallback.
-SECRET_FROM_GITHUB = os.environ.get("AGENT_SEED", "NOT_FOUND")
-TARGET_ADDR = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
+# --- 🔒 THE HARD-LOCK PROTOCOL ---
+# We pull the HEX KEY from GitHub Secrets so it stays private.
+HEX_KEY = os.environ.get("AGENT_1_KEY")
 
-async def main():
-    print(f"📡 Attempting to pull key from GitHub Secrets...")
-    
-    if SECRET_FROM_GITHUB == "NOT_FOUND":
-        print("❌ ERROR: No secret found in the environment.")
-        print("Make sure you added 'AGENT_SEED' to your GitHub Secrets AND the YAML file.")
-        return
+if not HEX_KEY:
+    print("❌ ERROR: AGENT_1_KEY not found in GitHub Secrets!")
+    exit()
 
-    # Try to turn that secret into our funded address
-    ident = Identity.from_seed(SECRET_FROM_GITHUB, 0)
-    banker_wallet = LocalWallet(PrivateKey(bytes.fromhex(ident.private_key)), prefix="fetch")
+# This creates the 'Soul' of the agent directly from your Hex Key.
+# It bypasses all seed-phrase math.
+agent_identity = Identity.from_key(bytes.fromhex(HEX_KEY))
+
+# Initialize the agent with your fixed identity
+agent = Agent(
+    name="alpha_1",
+    identity=agent_identity,
+    port=8000,
+    endpoint=["http://127.0.0.1:8000/submit"],
+)
+
+@agent.on_event("startup")
+async def verify_identity(ctx: Context):
+    ctx.logger.info("🛡️ HARD-LOCK TEST INITIATED")
+    ctx.logger.info(f"📍 ACTIVE WALLET: {agent.address}")
     
-    derived = str(banker_wallet.address())
-    print(f"🔎 Derived from Secret: {derived}")
-    
-    if derived == TARGET_ADDR:
-        print("✅ SUCCESS! The secret matches the funded wallet.")
+    expected = "fetch1c6djwc0jytzkpzdxwamlq62huwnhqh59ynyyl0"
+    if agent.address == expected:
+        ctx.logger.info("✅ SUCCESS: The Agent is locked to your ASI Wallet!")
     else:
-        print("❌ MISMATCH. The secret held a different key.")
+        ctx.logger.info(f"❌ MISMATCH: Agent is at {agent.address}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    agent.run()
+    
