@@ -1,9 +1,9 @@
-import asyncio, bech32
+import asyncio
 from uagents.network import wait_for_tx_to_complete
-from uagents.crypto import Identity
 from cosmpy.aerial.client import LedgerClient, NetworkConfig
 from cosmpy.aerial.wallet import LocalWallet
 from cosmpy.crypto.keypairs import PrivateKey
+from cosmpy.crypto.mnemonic import derive_seed_from_mnemonic
 
 # --- 🎯 THE LOCKED TRUTH ---
 FUNDED_ADDR = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
@@ -30,37 +30,27 @@ SUB_SEEDS = [
 
 FUEL_AMOUNT = 50000000000000000 
 
-def to_fetch_addr(agent_addr):
-    hrp, data = bech32.bech32_decode(agent_addr)
-    return bech32.bech32_encode("fetch", data)
-
 async def final_fuel_run():
-    print(f"🔎 Deep-searching paths for {FUNDED_ADDR}...")
-    banker_wallet = None
+    print(f"🔗 Forcing Standard Derivation for {FUNDED_ADDR}...")
     
-    # We check indices 0-10 across common paths
-    for i in range(11):
-        # Path A: Standard uAgents path
-        ident_a = Identity.from_seed(BANKER_SEED, i)
-        if to_fetch_addr(ident_a.address) == FUNDED_ADDR:
-            print(f"✅ Found! Path: Standard, Index: {i}")
-            banker_wallet = LocalWallet(PrivateKey(bytes.fromhex(ident_a.private_key)))
-            break
+    # Use Cosmpy's native wallet from mnemonic to match standard wallet behavior
+    # This bypasses the uagents 'Identity' which is forcing Segwit/Bech32m
+    banker_wallet = LocalWallet.from_mnemonic(BANKER_SEED)
+    
+    derived_addr = str(banker_wallet.address())
+    print(f"✨ Derived Address: {derived_addr}")
 
-        # Path B: Alternative wallet path (checking if library allows)
-        # Note: If this fails, we will try a manual cosmpy derivation in the next step
-        
-    if not banker_wallet:
-        print("🛑 Still not found. Let's check the absolute default index 0 one last time.")
-        ident_zero = Identity.from_seed(BANKER_SEED, 0)
-        print(f"Index 0 actually derives: {to_fetch_addr(ident_zero.address)}")
+    if derived_addr != FUNDED_ADDR:
+        print("🛑 Address mismatch! Trying alternative index...")
+        # If this happens, we just need to loop the LocalWallet.from_mnemonic index
         return
 
-    bal = ledger.query_bank_balance(FUNDED_ADDR)
+    bal = ledger.query_bank_balance(derived_addr)
     print(f"💰 Confirmed Balance: {float(bal)/10**18:.4f} FET")
 
     for seed in SUB_SEEDS:
-        target_addr = to_fetch_addr(Identity.from_seed(seed, 0).address)
+        target_wallet = LocalWallet.from_mnemonic(seed)
+        target_addr = str(target_wallet.address())
         try:
             print(f"⛽ Sending 0.05 to {target_addr[:15]}...")
             tx = ledger.send_tokens(target_addr, FUEL_AMOUNT, "afet", banker_wallet)
