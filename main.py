@@ -2,8 +2,6 @@ import asyncio
 from uagents.network import wait_for_tx_to_complete
 from cosmpy.aerial.client import LedgerClient, NetworkConfig
 from cosmpy.aerial.wallet import LocalWallet
-from cosmpy.crypto.keypairs import PrivateKey
-from cosmpy.crypto.mnemonic import derive_seed_from_mnemonic
 
 # --- 🎯 THE LOCKED TRUTH ---
 FUNDED_ADDR = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
@@ -28,37 +26,47 @@ SUB_SEEDS = [
     "beta_matrix_v26_secure_551"
 ]
 
-FUEL_AMOUNT = 50000000000000000 
+FUEL_AMOUNT = 50000000000000000 # 0.05 FET
 
 async def final_fuel_run():
-    print(f"🔗 Forcing Standard Derivation for {FUNDED_ADDR}...")
+    print(f"🔗 Accessing Standard Wallet for {FUNDED_ADDR}...")
     
-    # Use Cosmpy's native wallet from mnemonic to match standard wallet behavior
-    # This bypasses the uagents 'Identity' which is forcing Segwit/Bech32m
-    banker_wallet = LocalWallet.from_mnemonic(BANKER_SEED)
-    
-    derived_addr = str(banker_wallet.address())
-    print(f"✨ Derived Address: {derived_addr}")
+    try:
+        # Direct initialization - usually matches m/44'/118'/0'/0/0
+        banker_wallet = LocalWallet.from_mnemonic(BANKER_SEED)
+        derived_addr = str(banker_wallet.address())
+        print(f"✨ Derived Address: {derived_addr}")
 
-    if derived_addr != FUNDED_ADDR:
-        print("🛑 Address mismatch! Trying alternative index...")
-        # If this happens, we just need to loop the LocalWallet.from_mnemonic index
-        return
+        if derived_addr != FUNDED_ADDR:
+            print(f"⚠️ Mismatch! Derived {derived_addr} but need {FUNDED_ADDR}")
+            print("Let's try deriving with the alternative prefix...")
+            # Some versions of cosmpy might need an explicit prefix if 'fetch' isn't default
+            banker_wallet = LocalWallet.from_mnemonic(BANKER_SEED, prefix="fetch")
+            derived_addr = str(banker_wallet.address())
+            print(f"✨ New Derived Address: {derived_addr}")
+            
+        if derived_addr != FUNDED_ADDR:
+            print("🛑 Still no match. The seed might be deriving a different account index.")
+            return
 
-    bal = ledger.query_bank_balance(derived_addr)
-    print(f"💰 Confirmed Balance: {float(bal)/10**18:.4f} FET")
+        bal = ledger.query_bank_balance(derived_addr)
+        print(f"💰 Confirmed Balance: {float(bal)/10**18:.4f} FET")
 
-    for seed in SUB_SEEDS:
-        target_wallet = LocalWallet.from_mnemonic(seed)
-        target_addr = str(target_wallet.address())
-        try:
-            print(f"⛽ Sending 0.05 to {target_addr[:15]}...")
-            tx = ledger.send_tokens(target_addr, FUEL_AMOUNT, "afet", banker_wallet)
-            await wait_for_tx_to_complete(tx.tx_hash, ledger)
-            print(f"✅ Success: {tx.tx_hash[:10]}")
-            await asyncio.sleep(1) 
-        except Exception as e:
-            print(f"❌ Error: {e}")
+        for seed in SUB_SEEDS:
+            # Fund sub-agents using the same standard derivation
+            target_wallet = LocalWallet.from_mnemonic(seed, prefix="fetch")
+            target_addr = str(target_wallet.address())
+            try:
+                print(f"⛽ Sending 0.05 to {target_addr[:15]}...")
+                tx = ledger.send_tokens(target_addr, FUEL_AMOUNT, "afet", banker_wallet)
+                await wait_for_tx_to_complete(tx.tx_hash, ledger)
+                print(f"✅ Success: {tx.tx_hash[:10]}")
+                await asyncio.sleep(1) 
+            except Exception as e:
+                print(f"❌ Error during transfer: {e}")
+
+    except Exception as e:
+        print(f"❌ General Error: {e}")
 
 if __name__ == "__main__":
     asyncio.run(final_fuel_run())
