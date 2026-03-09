@@ -3,7 +3,7 @@ from uagents.network import wait_for_tx_to_complete
 from uagents.crypto import Identity
 from cosmpy.aerial.client import LedgerClient, NetworkConfig
 from cosmpy.aerial.wallet import LocalWallet
-from cosmpy.crypto.keypairs import PrivateKey # The bridge object
+from cosmpy.crypto.keypairs import PrivateKey
 
 # --- 🎯 THE LOCKED TRUTH ---
 FUNDED_ADDR = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
@@ -16,7 +16,6 @@ MAINNET_CONFIG = NetworkConfig(
     fee_denomination="afet",
     staking_denomination="afet",
 )
-
 ledger = LedgerClient(MAINNET_CONFIG)
 
 SUB_SEEDS = [
@@ -29,23 +28,35 @@ SUB_SEEDS = [
     "beta_matrix_v26_secure_551"
 ]
 
-FUEL_AMOUNT = 50000000000000000 # 0.05 FET
+# 0.05 FET
+FUEL_AMOUNT = 50000000000000000 
 
-def get_fetch_address(seed):
-    ident = Identity.from_seed(seed, 0)
+def get_fetch_address(seed, index=0):
+    ident = Identity.from_seed(seed, index)
     hrp, data = bech32.bech32_decode(ident.address)
     return bech32.bech32_encode("fetch", data)
 
 async def final_fuel_run():
-    # 1. Create the Banker Identity
-    banker_ident = Identity.from_seed(BANKER_SEED, 0)
+    print("🔎 Searching for the correct wallet index...")
+    banker_wallet = None
     
-    # 2. Convert the hex string into a real PrivateKey object
-    # This provides the .public_key attribute that LocalWallet is looking for
-    priv_key_obj = PrivateKey(bytes.fromhex(banker_ident.private_key))
-    banker_wallet = LocalWallet(priv_key_obj)
+    # Check the first 20 indices to find where your 9.6 FET is hiding
+    for i in range(21):
+        temp_ident = Identity.from_seed(BANKER_SEED, i)
+        # Convert bech32 'agent' prefix to 'fetch' to compare
+        hrp, data = bech32.bech32_decode(temp_ident.address)
+        current_addr = bech32.bech32_encode("fetch", data)
+        
+        if current_addr == FUNDED_ADDR:
+            print(f"✅ Found it! Index {i} matches your funded address.")
+            priv_key_obj = PrivateKey(bytes.fromhex(temp_ident.private_key))
+            banker_wallet = LocalWallet(priv_key_obj)
+            break
     
-    print(f"📡 Querying Fetch Mainnet...")
+    if not banker_wallet:
+        print(f"❌ Could not find index for {FUNDED_ADDR}. Double-check the seed/address.")
+        return
+
     bal = ledger.query_bank_balance(FUNDED_ADDR)
     print(f"💰 Confirmed Balance: {float(bal)/10**18:.4f} FET")
 
@@ -53,10 +64,7 @@ async def final_fuel_run():
         target_addr = get_fetch_address(seed)
         try:
             print(f"⛽ Sending 0.05 to {target_addr[:15]}...")
-            
-            # The transaction is now signed by a fully valid Wallet object
             tx = ledger.send_tokens(target_addr, FUEL_AMOUNT, "afet", banker_wallet)
-            
             await wait_for_tx_to_complete(tx.tx_hash, ledger)
             print(f"✅ Success: {tx.tx_hash[:10]}")
             await asyncio.sleep(1) 
