@@ -6,7 +6,7 @@ from cosmpy.crypto.keypairs import PrivateKey
 # --- 🎯 THE TARGET ---
 FUNDED_ADDR = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
 # Try your primary 12-word phrase here
-SEED_PHRASE = "just done free bush call angry hip juice pine sky salt cactus" 
+SEED_PHRASE = "brown lorry mountain eye bolt raise blend grave house field muck din" 
 
 async def recover_agent_route():
     print(f"🕵️ Searching for route to {FUNDED_ADDR}...\n")
