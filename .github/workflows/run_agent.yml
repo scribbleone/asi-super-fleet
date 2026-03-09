@@ -3,25 +3,32 @@ name: Super-Agent Pulse 24/7
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/20 * * * *'  # Runs every 20 minutes, 24/7
+    # Runs every 6 hours to keep the pulse alive
+    - cron: '0 */6 * * *'
 
 jobs:
   run-fleet:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Install 2026 Libraries
-        run: pip install cosmpy uagents
+      - name: Install Dependencies
+        run: |
+          pip install uagents cosmpy
 
-      - name: Run 20-Agent Bureau
+      - name: Run Agent Test
+        # --- 🛡️ THE SECRET BRIDGE ---
         env:
-          AGENT_SEED: ${{ secrets.AGENT_SEED }}
+          AGENT_1_KEY: ${{ secrets.AGENT_1_KEY }}
+        # ----------------------------
         run: python main.py
+        
+        
         
