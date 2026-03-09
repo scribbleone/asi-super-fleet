@@ -3,40 +3,40 @@ from uagents.crypto import Identity
 from cosmpy.aerial.wallet import LocalWallet
 from cosmpy.crypto.keypairs import PrivateKey
 
-# --- 🎯 THE TEST ZONE ---
-SECRET_PHRASE = "brown lorry mountain eye bolt raise blend grave house field muck din" 
-TARGET = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
+# --- 🎯 THE TARGET ---
+FUNDED_ADDR = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
+# Try your primary 12-word phrase here
+SEED_PHRASE = "YOUR_12_WORDS_HERE" 
 
-async def main():
-    print(f"🕵️ Scanning derivation paths for: {TARGET}\n")
+async def recover_agent_route():
+    print(f"🕵️ Searching for route to {FUNDED_ADDR}...\n")
 
-    # TEST 1: The "Identity" Method (uagents standard)
-    # This treats the words as a single string.
+    # PATH A: The "Direct Mnemonic" Route (Standard Wallet)
     try:
-        ident = Identity.from_seed(SECRET_PHRASE, 0)
-        addr1 = str(LocalWallet(PrivateKey(bytes.fromhex(ident.private_key)), prefix="fetch").address())
-        print(f"1. Identity String Method: {addr1} {'✅ MATCH!' if addr1 == TARGET else '❌'}")
-    except: print("1. Identity Method: Failed to run")
+        w_a = LocalWallet.from_mnemonic(SEED_PHRASE, prefix="fetch")
+        addr_a = str(w_a.address())
+        print(f"Path A (Standard Mnemonic): {addr_a}")
+        if addr_a == FUNDED_ADDR: print("✅ MATCH FOUND IN PATH A!")
+    except: pass
 
-    # TEST 2: The "BIP39 Mnemonic" Method (Keplr/Fetch Wallet standard)
-    # This treats the words as a formal recovery phrase.
+    # PATH B: The "Identity String" Route (Default uagents)
     try:
-        # We use a safe way to check even if 'lorry' isn't in the official wordlist
-        wallet2 = LocalWallet.from_mnemonic(SECRET_PHRASE, prefix="fetch")
-        addr2 = str(wallet2.address())
-        print(f"2. BIP39 Mnemonic Method: {addr2} {'✅ MATCH!' if addr2 == TARGET else '❌'}")
-    except Exception as e:
-        print(f"2. BIP39 Mnemonic Method: ❌ (Error: {e})")
+        ident_b = Identity.from_seed(SEED_PHRASE, 0)
+        w_b = LocalWallet(PrivateKey(bytes.fromhex(ident_b.private_key)), prefix="fetch")
+        addr_b = str(w_b.address())
+        print(f"Path B (Identity String):   {addr_b}")
+        if addr_b == FUNDED_ADDR: print("✅ MATCH FOUND IN PATH B!")
+    except: pass
 
-    # TEST 3: The "Legacy Identity" Method
-    # Sometimes index 1 or a different account is used by accident.
+    # PATH C: The "Legacy Ledger" Route
     try:
-        ident3 = Identity.from_seed(SECRET_PHRASE, 1)
-        addr3 = str(LocalWallet(PrivateKey(bytes.fromhex(ident3.private_key)), prefix="fetch").address())
-        print(f"3. Identity (Index 1) Method: {addr3} {'✅ MATCH!' if addr3 == TARGET else '❌'}")
-    except: print("3. Identity (Index 1): Failed to run")
-
-    print("\n💡 If all are ❌, try your OTHER 12-word phrase in this same script.")
+        from cosmpy.crypto.address import Address
+        ident_c = Identity.from_seed(SEED_PHRASE, 0)
+        # This checks if the prefixing is causing the 'scramble'
+        addr_c = Address(bytes.fromhex(ident_c.address), prefix="fetch")
+        print(f"Path C (Legacy Prefix):     {addr_c}")
+        if str(addr_c) == FUNDED_ADDR: print("✅ MATCH FOUND IN PATH C!")
+    except: pass
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(recover_agent_route())
