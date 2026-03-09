@@ -1,4 +1,6 @@
-import asyncio, shutil, os
+import asyncio
+import os
+import shutil
 from uagents.network import wait_for_tx_to_complete
 from uagents.crypto import Identity
 from cosmpy.aerial.client import LedgerClient, NetworkConfig
@@ -6,10 +8,10 @@ from cosmpy.aerial.wallet import LocalWallet
 from cosmpy.crypto.keypairs import PrivateKey
 
 # --- 🎯 THE LOCKED TRUTH ---
-# We are going to try to derive the funded address using a different internal method
 FUNDED_ADDR = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
-BANKER_SEED_STRING = "alpha_prime_v26_secure_881"
+BANKER_SEED = "alpha_prime_v26_secure_881"
 
+# Mainnet Configuration for Fetch.ai
 MAINNET_CONFIG = NetworkConfig(
     chain_id="fetchhub-4",
     url="grpc+https://grpc-fetchhub.fetch.ai:443",
@@ -19,6 +21,7 @@ MAINNET_CONFIG = NetworkConfig(
 )
 ledger = LedgerClient(MAINNET_CONFIG)
 
+# The 20-Agent Fleet Seeds
 SUB_SEEDS = [
     "alpha_nexus_v26_secure_102", "alpha_orbit_v26_secure_554", "alpha_pulse_v26_secure_923", 
     "alpha_glory_v26_secure_317", "alpha_delta_v26_secure_441", "alpha_titan_v26_secure_609", 
@@ -29,56 +32,70 @@ SUB_SEEDS = [
     "beta_matrix_v26_secure_551"
 ]
 
-FUEL_AMOUNT = 50000000000000000 
+FUEL_AMOUNT = 50000000000000000 # 0.05 FET
 
-async def final_fuel_run():
-    print(f"🕵️ Analyzing Seed logic for {FUNDED_ADDR}...")
+def get_standard_fetch_wallet(seed_string, index=0):
+    """
+    Forces the Identity to output a private key, then wraps it 
+    into a standard 'fetch' prefix wallet to avoid Bech32m errors.
+    """
+    ident = Identity.from_seed(seed_string, index)
+    priv_key = PrivateKey(bytes.fromhex(ident.private_key))
+    return LocalWallet(priv_key, prefix="fetch")
 
-    # TEST A: Does a simple hash of the seed string work?
-    # Some older implementations just sha256 the string to get the private key
-    import hashlib
-    h = hashlib.sha256(BANKER_SEED_STRING.encode()).digest()
-    test_wallet = LocalWallet(PrivateKey(h), prefix="fetch")
+async def run_fleet_fueling():
+    print(f"🚀 Starting Fleet Fueling from {FUNDED_ADDR}...")
+
+    # 1. Create a backup of main.py as requested
+    if not os.path.exists("main.py.bak"):
+        shutil.copy("main.py", "main.py.bak")
+        print("📁 Backup created: main.py.bak")
+
+    # 2. Initialize the Banker Wallet
+    # We use index 0 because that's the standard for single-agent funding
+    banker_wallet = get_standard_fetch_wallet(BANKER_SEED, 0)
+    current_addr = str(banker_wallet.address())
     
-    if str(test_wallet.address()) == FUNDED_ADDR:
-        print("🎯 Found it! Seed was a direct SHA256 hash.")
-        banker_wallet = test_wallet
-    else:
-        print(f"❌ SHA256 test failed. Derived: {test_wallet.address()}")
-        # TEST B: Check if there's an index we missed or a legacy path
-        print("Checking legacy derivation indices...")
-        banker_wallet = None
-        for i in range(100):
-            # We use Identity's logic but try a different index range
-            test_ident = Identity.from_seed(BANKER_SEED_STRING, i)
-            test_wallet = LocalWallet(PrivateKey(bytes.fromhex(test_ident.private_key)), prefix="fetch")
-            if str(test_wallet.address()) == FUNDED_ADDR:
-                print(f"🎯 Found it! Index: {i}")
-                banker_wallet = test_wallet
+    print(f"🔎 Checking derived address: {current_addr}")
+
+    # 3. Validation Check
+    if current_addr != FUNDED_ADDR:
+        print(f"❌ ERROR: Derived address {current_addr} does not match funded address {FUNDED_ADDR}")
+        print("Checking if you used a different index...")
+        # Emergency scan of first 5 indices
+        for i in range(1, 6):
+            alt_wallet = get_standard_fetch_wallet(BANKER_SEED, i)
+            if str(alt_wallet.address()) == FUNDED_ADDR:
+                print(f"✅ Found match at Index {i}!")
+                banker_wallet = alt_wallet
                 break
+        else:
+            return
 
-    if not banker_wallet:
-        print("🛑 RECOVERY FAILED. The seed string provided does not mathematically produce the funded address.")
-        print("Check if there is a typo in 'alpha_prime_v26_secure_881'.")
-        return
+    # 4. Check Balance on Mainnet
+    balance = ledger.query_bank_balance(str(banker_wallet.address()))
+    print(f"💰 Confirmed Banker Balance: {float(balance)/10**18:.4f} FET")
 
-    # --- FLEET FUELING ---
-    bal = ledger.query_bank_balance(str(banker_wallet.address()))
-    print(f"💰 Balance: {float(bal)/10**18:.4f} FET")
-
-    for seed in SUB_SEEDS:
-        # Generate targets using standard index 0
-        target_ident = Identity.from_seed(seed, 0)
-        target_wallet = LocalWallet(PrivateKey(bytes.fromhex(target_ident.private_key)), prefix="fetch")
+    # 5. Fuel the Fleet
+    for i, sub_seed in enumerate(SUB_SEEDS):
+        target_wallet = get_standard_fetch_wallet(sub_seed, 0)
         target_addr = str(target_wallet.address())
         
         try:
-            print(f"⛽ Sending 0.05 to {target_addr[:15]}...")
+            print(f"⛽ [{i+1}/20] Sending 0.05 FET to {target_addr[:20]}...")
             tx = ledger.send_tokens(target_addr, FUEL_AMOUNT, "afet", banker_wallet)
+            
+            # Wait for block confirmation
             await wait_for_tx_to_complete(tx.tx_hash, ledger)
-            print(f"✅ Success!")
+            print(f"✅ Transaction Confirmed: {tx.tx_hash[:12]}")
+            
+            # Small delay to prevent sequence errors on the blockchain
+            await asyncio.sleep(1)
+            
         except Exception as e:
-            print(f"⚠️ Transfer Error: {e}")
+            print(f"⚠️ Failed to fuel agent {i+1}: {e}")
+
+    print("\n🏁 Fleet Fueling Sequence Complete.")
 
 if __name__ == "__main__":
-    asyncio.run(final_fuel_run())
+    asyncio.run(run_fleet_fueling())
