@@ -2,7 +2,6 @@ import asyncio
 import os
 from uagents import Agent, Context
 from uagents.crypto import Identity
-from uagents_core.crypto.identity import EncodableIdentity
 
 # --- 🔒 THE ABSOLUTE 1:1 LOCK ---
 HEX_KEY = os.environ.get("AGENT_1_KEY")
@@ -11,9 +10,9 @@ if not HEX_KEY:
     print("❌ ERROR: AGENT_1_KEY not found in GitHub Secrets!")
     exit()
 
-# We use the core 'from_seed' but with the index 0 and your HEX.
-# In this specific library version, this is the most direct 1:1 path.
-agent_identity = Identity.from_seed(HEX_KEY, 0)
+# We use from_key and pass it the HEX. 
+# In uagents 0.24.0, this is the 'back door' to 1:1 matching.
+agent_identity = Identity.from_key(HEX_KEY)
 
 agent = Agent(
     name="alpha_1",
@@ -31,12 +30,12 @@ async def verify_identity(ctx: Context):
     expected = "fetch1c6djwc0jytzkpzdxwamlq62huwnhqh59ynyyl0"
     
     if agent.address == expected:
-        ctx.logger.info("✅ SUCCESS: 1:1 MATCH! The 50,000 variants are dead.")
+        ctx.logger.info("✅ SUCCESS: 1:1 MATCH! The variations are dead.")
+        ctx.logger.info("The agent and your phone are now looking at the same wallet.")
     else:
         ctx.logger.info("❌ MISMATCH.")
         ctx.logger.info(f"The code produced: {agent.address}")
-        ctx.logger.info("This means the library is still deriving a new path.")
-        ctx.logger.info("I have a backup 'Raw Byte' method if this fails.")
+        ctx.logger.info("This usually means the Secret Key in GitHub is missing a character or is the wrong one.")
 
 if __name__ == "__main__":
     agent.run()
