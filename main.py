@@ -7,11 +7,13 @@ from cosmpy.aerial.client import LedgerClient, NetworkConfig
 from cosmpy.aerial.wallet import LocalWallet
 from cosmpy.crypto.keypairs import PrivateKey
 
-# --- 🎯 THE LOCKED TRUTH ---
-FUNDED_ADDR = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
-BANKER_SEED = "alpha_prime_v26_secure_881"
+# --- 🎯 THE MASTER ACCESS ---
+# PASTE YOUR 12 WORDS BETWEEN THE QUOTES BELOW (Line 12)
+# Example: "apple banana cherry..."
+MNEMONIC_PHRASE = "just done free bush call angry hip juice pine sky salt cactus" 
 
-# Mainnet Configuration for Fetch.ai
+FUNDED_ADDR = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
+
 MAINNET_CONFIG = NetworkConfig(
     chain_id="fetchhub-4",
     url="grpc+https://grpc-fetchhub.fetch.ai:443",
@@ -34,68 +36,48 @@ SUB_SEEDS = [
 
 FUEL_AMOUNT = 50000000000000000 # 0.05 FET
 
-def get_standard_fetch_wallet(seed_string, index=0):
-    """
-    Forces the Identity to output a private key, then wraps it 
-    into a standard 'fetch' prefix wallet to avoid Bech32m errors.
-    """
-    ident = Identity.from_seed(seed_string, index)
-    priv_key = PrivateKey(bytes.fromhex(ident.private_key))
-    return LocalWallet(priv_key, prefix="fetch")
-
 async def run_fleet_fueling():
-    print(f"🚀 Starting Fleet Fueling from {FUNDED_ADDR}...")
+    print(f"🚀 Initializing Mnemonic Recovery for {FUNDED_ADDR}...")
 
-    # 1. Create a backup of main.py as requested
     if not os.path.exists("main.py.bak"):
         shutil.copy("main.py", "main.py.bak")
-        print("📁 Backup created: main.py.bak")
+        print("📁 Backup created.")
 
-    # 2. Initialize the Banker Wallet
-    # We use index 0 because that's the standard for single-agent funding
-    banker_wallet = get_standard_fetch_wallet(BANKER_SEED, 0)
-    current_addr = str(banker_wallet.address())
-    
-    print(f"🔎 Checking derived address: {current_addr}")
+    try:
+        # Load the banker wallet from the 12-word mnemonic
+        # This uses the standard BIP44 path: m/44'/118'/0'/0/0
+        banker_wallet = LocalWallet.from_mnemonic(MNEMONIC_PHRASE, prefix="fetch")
+        current_addr = str(banker_wallet.address())
+        
+        print(f"✨ Wallet Address Derived: {current_addr}")
 
-    # 3. Validation Check
-    if current_addr != FUNDED_ADDR:
-        print(f"❌ ERROR: Derived address {current_addr} does not match funded address {FUNDED_ADDR}")
-        print("Checking if you used a different index...")
-        # Emergency scan of first 5 indices
-        for i in range(1, 6):
-            alt_wallet = get_standard_fetch_wallet(BANKER_SEED, i)
-            if str(alt_wallet.address()) == FUNDED_ADDR:
-                print(f"✅ Found match at Index {i}!")
-                banker_wallet = alt_wallet
-                break
-        else:
+        if current_addr != FUNDED_ADDR:
+            print(f"🛑 MISMATCH! Derived {current_addr}, but we need {FUNDED_ADDR}")
+            print("Double-check your 12 words and their order.")
             return
 
-    # 4. Check Balance on Mainnet
-    balance = ledger.query_bank_balance(str(banker_wallet.address()))
-    print(f"💰 Confirmed Banker Balance: {float(balance)/10**18:.4f} FET")
+        balance = ledger.query_bank_balance(current_addr)
+        print(f"💰 Confirmed Balance: {float(balance)/10**18:.4f} FET")
 
-    # 5. Fuel the Fleet
-    for i, sub_seed in enumerate(SUB_SEEDS):
-        target_wallet = get_standard_fetch_wallet(sub_seed, 0)
-        target_addr = str(target_wallet.address())
-        
-        try:
-            print(f"⛽ [{i+1}/20] Sending 0.05 FET to {target_addr[:20]}...")
-            tx = ledger.send_tokens(target_addr, FUEL_AMOUNT, "afet", banker_wallet)
+        # Fueling logic
+        for i, sub_seed in enumerate(SUB_SEEDS):
+            # We keep sub-agents on the v26_secure seeds for now
+            target_ident = Identity.from_seed(sub_seed, 0)
+            target_priv = PrivateKey(bytes.fromhex(target_ident.private_key))
+            target_wallet = LocalWallet(target_priv, prefix="fetch")
+            target_addr = str(target_wallet.address())
             
-            # Wait for block confirmation
-            await wait_for_tx_to_complete(tx.tx_hash, ledger)
-            print(f"✅ Transaction Confirmed: {tx.tx_hash[:12]}")
-            
-            # Small delay to prevent sequence errors on the blockchain
-            await asyncio.sleep(1)
-            
-        except Exception as e:
-            print(f"⚠️ Failed to fuel agent {i+1}: {e}")
+            try:
+                print(f"⛽ [{i+1}/20] Sending 0.05 FET to {target_addr[:20]}...")
+                tx = ledger.send_tokens(target_addr, FUEL_AMOUNT, "afet", banker_wallet)
+                await wait_for_tx_to_complete(tx.tx_hash, ledger)
+                print(f"✅ Success: {tx.tx_hash[:12]}")
+                await asyncio.sleep(1)
+            except Exception as e:
+                print(f"⚠️ Error on agent {i+1}: {e}")
 
-    print("\n🏁 Fleet Fueling Sequence Complete.")
+    except Exception as e:
+        print(f"❌ Critical Error: {e}")
 
 if __name__ == "__main__":
     asyncio.run(run_fleet_fueling())
