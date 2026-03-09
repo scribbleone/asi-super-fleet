@@ -3,16 +3,17 @@ import os
 from uagents import Agent, Context
 from uagents.crypto import Identity
 
-# --- 🔒 THE HARD-LOCK PROTOCOL ---
+# --- 🔒 THE 1:1 HARD-LOCK ---
 HEX_KEY = os.environ.get("AGENT_1_KEY")
 
 if not HEX_KEY:
     print("❌ ERROR: AGENT_1_KEY not found in GitHub Secrets!")
     exit()
 
-# We use 'from_seed' but pass the HEX string. 
-# This ensures it uses the exact bytes of your Private Key.
-agent_identity = Identity.from_seed(HEX_KEY, 0)
+# We use 'from_sk' (Secret Key). 
+# This is a DIRECT link. No derivation, no math, no '50,000 ways'.
+# It converts your HEX string directly into the Agent's soul.
+agent_identity = Identity.from_sk(HEX_KEY)
 
 agent = Agent(
     name="alpha_1",
@@ -23,17 +24,19 @@ agent = Agent(
 
 @agent.on_event("startup")
 async def verify_identity(ctx: Context):
-    ctx.logger.info("🛡️ HARD-LOCK TEST INITIATED")
-    ctx.logger.info(f"📍 ACTIVE WALLET: {agent.address}")
+    ctx.logger.info("🛡️ 1:1 IDENTITY LOCK CHECK")
+    ctx.logger.info(f"📍 AGENT ADDRESS: {agent.address}")
     
-    # This is the address you imported to your ASI Wallet
+    # This is the 'fetch1c6dj...' address from your phone
     expected = "fetch1c6djwc0jytzkpzdxwamlq62huwnhqh59ynyyl0"
     
     if agent.address == expected:
-        ctx.logger.info("✅ SUCCESS: The Agent is locked to your ASI Wallet!")
+        ctx.logger.info("✅ SUCCESS: 1:1 MATCH FOUND.")
+        ctx.logger.info("The agent and your ASI Wallet are now the same person.")
     else:
-        ctx.logger.info(f"⚠️ MISMATCH: Agent is at {agent.address}")
-        ctx.logger.info(f"Verify you used the Hex Key for {expected}")
+        ctx.logger.info("❌ STILL A MISMATCH.")
+        ctx.logger.info(f"Agent generated: {agent.address}")
+        ctx.logger.info("This means the Hex Key in Secrets isn't the one for that wallet.")
 
 if __name__ == "__main__":
     agent.run()
