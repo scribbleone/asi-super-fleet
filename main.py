@@ -7,7 +7,7 @@ from cosmpy.crypto.keypairs import PrivateKey
 
 # --- 🎯 THE MASTER ACCESS ---
 # Put your 12 words here exactly as they are written (e.g. "lorry apple...")
-SECRET_PHRASE = "just done free bush call angry hip juice pine sky salt cactus" 
+SECRET_PHRASE = "brown lorry mountain eye bolt raise blend grave house field muck din" 
 FUNDED_ADDR = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
 
 # Fleet targets (Sub-agents)
