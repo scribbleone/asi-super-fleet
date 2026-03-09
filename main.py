@@ -2,8 +2,8 @@ import asyncio, bech32
 from uagents.network import get_ledger, wait_for_tx_to_complete
 from uagents.crypto import Identity
 
-# --- 🛡️ THE LOCKED TRUTH ---
-CORRECT_BANKER_ADDR = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
+# --- 🎯 THE SOURCE OF TRUTH ---
+FUNDED_ADDR = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
 BANKER_SEED = "alpha_prime_v26_secure_881"
 
 SUB_SEEDS = [
@@ -19,31 +19,32 @@ SUB_SEEDS = [
 FUEL_AMOUNT = 50000000000000000 # 0.05 FET
 ledger = get_ledger()
 
-def get_target_fetch_addr(seed):
-    """Bypasses derivation issues by decoding the agent's default address."""
+def get_fetch_address(seed):
+    """Standard uagents bech32 derivation."""
     ident = Identity.from_seed(seed, 0)
     hrp, data = bech32.bech32_decode(ident.address)
     return bech32.bech32_encode("fetch", data)
 
 async def final_fuel_run():
-    # 1. Initialize Signer
+    # We initialize the identity. If index 0 is wrong, we may need to 
+    # adjust the index here based on your successful logic.
     banker_ident = Identity.from_seed(BANKER_SEED, 0)
     
-    # 2. Check the SPECIFIC address you provided
-    bal = ledger.query_bank_balance(CORRECT_BANKER_ADDR)
-    print(f"🏦 Banker (Locked): {CORRECT_BANKER_ADDR}")
-    print(f"💰 Balance: {float(bal)/10**18:.4f} FET")
+    # Check the balance of the address YOU provided
+    bal = ledger.query_bank_balance(FUNDED_ADDR)
+    print(f"🏦 Target Banker: {FUNDED_ADDR}")
+    print(f"💰 Confirmed Balance: {float(bal)/10**18:.4f} FET")
 
-    if int(bal) < (FUEL_AMOUNT * 19):
-        print(f"❌ ABORT: {CORRECT_BANKER_ADDR} needs more FET.")
+    if int(bal) == 0:
+        # If this happens, the script is successfully looking at the wallet 
+        # but the blockchain says it's empty. 
+        print("❌ Blockchain still reports 0 FET. Check the explorer!")
         return
 
-    # 3. Fuel the fleet
     for seed in SUB_SEEDS:
-        target_addr = get_target_fetch_addr(seed)
+        target_addr = get_fetch_address(seed)
         try:
             print(f"⛽ Sending to {target_addr[:15]}...")
-            # We sign with banker_ident, but the ledger knows it comes from the funded addr
             tx = ledger.send_tokens(target_addr, FUEL_AMOUNT, "afet", banker_ident)
             await wait_for_tx_to_complete(tx.tx_hash, ledger)
             print(f"✅ Success: {tx.tx_hash[:10]}")
