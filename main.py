@@ -1,26 +1,33 @@
+import asyncio
 import os
 from uagents.crypto import Identity
+from cosmpy.aerial.wallet import LocalWallet
+from cosmpy.crypto.keypairs import PrivateKey
 
-def extract_current_identity():
-    print("🔍 Searching for active Agent 1 identity...")
+# --- 🎯 THE VAULT ACCESS ---
+# This looks for a GitHub Secret. If it doesn't find one, it uses a fallback.
+SECRET_FROM_GITHUB = os.environ.get("AGENT_SEED", "NOT_FOUND")
+TARGET_ADDR = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
+
+async def main():
+    print(f"📡 Attempting to pull key from GitHub Secrets...")
     
-    # This looks for the default 'agent.utils' or '.env' where uagents saves keys
-    # If you are running this in a folder with an existing agent, it should find it.
-    try:
-        # Check if an identity is already loaded in the environment
-        agent_address = os.environ.get("AGENT_ADDRESS")
-        print(f"Current Environment Address: {agent_address}")
-        
-        # We are going to attempt to find any local .env files
-        if os.path.exists(".env"):
-            with open(".env", "r") as f:
-                print("📄 Found .env file. Content (Redacted for security):")
-                for line in f:
-                    if "SEED" in line or "PRIVATE_KEY" in line:
-                        print(f"Found a key entry: {line.split('=')[0]}...")
+    if SECRET_FROM_GITHUB == "NOT_FOUND":
+        print("❌ ERROR: No secret found in the environment.")
+        print("Make sure you added 'AGENT_SEED' to your GitHub Secrets AND the YAML file.")
+        return
 
-    except Exception as e:
-        print(f"❌ Error during extraction: {e}")
+    # Try to turn that secret into our funded address
+    ident = Identity.from_seed(SECRET_FROM_GITHUB, 0)
+    banker_wallet = LocalWallet(PrivateKey(bytes.fromhex(ident.private_key)), prefix="fetch")
+    
+    derived = str(banker_wallet.address())
+    print(f"🔎 Derived from Secret: {derived}")
+    
+    if derived == TARGET_ADDR:
+        print("✅ SUCCESS! The secret matches the funded wallet.")
+    else:
+        print("❌ MISMATCH. The secret held a different key.")
 
 if __name__ == "__main__":
-    extract_current_identity()
+    asyncio.run(main())
