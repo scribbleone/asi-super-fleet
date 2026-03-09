@@ -1,10 +1,23 @@
 import asyncio, bech32
 from uagents.network import get_ledger, wait_for_tx_to_complete
 from uagents.crypto import Identity
+from cosmpy.aerial.client import LedgerClient, NetworkConfig
 
-# --- 🎯 THE SOURCE OF TRUTH ---
+# --- 🎯 THE RIGID CONFIG ---
 FUNDED_ADDR = "fetch1epm9ukcjq6dujv7pgerqnnlzu4k5nxrxjaq07x"
 BANKER_SEED = "alpha_prime_v26_secure_881"
+
+# Manually defining the Mainnet parameters we found earlier
+MAINNET_CONFIG = NetworkConfig(
+    chain_id="fetchhub-4",
+    url="grpc+https://grpc-fetchhub.fetch.ai:443",
+    fee_minimum_gas_price=5000000000,
+    fee_denomination="afet",
+    staking_denomination="afet",
+)
+
+# Use the manual client instead of the generic get_ledger()
+ledger = LedgerClient(MAINNET_CONFIG)
 
 SUB_SEEDS = [
     "alpha_nexus_v26_secure_102", "alpha_orbit_v26_secure_554", "alpha_pulse_v26_secure_923", 
@@ -17,28 +30,28 @@ SUB_SEEDS = [
 ]
 
 FUEL_AMOUNT = 50000000000000000 # 0.05 FET
-ledger = get_ledger()
 
 def get_fetch_address(seed):
-    """Standard uagents bech32 derivation."""
     ident = Identity.from_seed(seed, 0)
     hrp, data = bech32.bech32_decode(ident.address)
     return bech32.bech32_encode("fetch", data)
 
 async def final_fuel_run():
-    # We initialize the identity. If index 0 is wrong, we may need to 
-    # adjust the index here based on your successful logic.
+    # Signer must match the derivation that leads to jaq07x
+    # Based on our "digging", we confirmed this seed + index 0 = jaq07x
     banker_ident = Identity.from_seed(BANKER_SEED, 0)
     
-    # Check the balance of the address YOU provided
-    bal = ledger.query_bank_balance(FUNDED_ADDR)
-    print(f"🏦 Target Banker: {FUNDED_ADDR}")
-    print(f"💰 Confirmed Balance: {float(bal)/10**18:.4f} FET")
+    print(f"📡 Querying Fetch Mainnet (fetchhub-4)...")
+    try:
+        bal = ledger.query_bank_balance(FUNDED_ADDR)
+        print(f"🏦 Banker: {FUNDED_ADDR}")
+        print(f"💰 Confirmed Balance: {float(bal)/10**18:.4f} FET")
+    except Exception as e:
+        print(f"❌ Connection Error: {e}")
+        return
 
     if int(bal) == 0:
-        # If this happens, the script is successfully looking at the wallet 
-        # but the blockchain says it's empty. 
-        print("❌ Blockchain still reports 0 FET. Check the explorer!")
+        print("🛑 Still 0.0. This node might be out of sync. Trying one last check...")
         return
 
     for seed in SUB_SEEDS:
