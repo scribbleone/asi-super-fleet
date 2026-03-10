@@ -1,7 +1,6 @@
 import os
 from uagents import Agent, Context
 from uagents.network import get_ledger
-from uagents.registration import LedgerRegistrationPolicy
 from cosmpy.aerial.wallet import LocalWallet
 from cosmpy.crypto.keypairs import PrivateKey
 
@@ -9,7 +8,7 @@ from cosmpy.crypto.keypairs import PrivateKey
 HEX_KEY = os.environ.get("AGENT_1_KEY")
 MY_HARD_WALLET = "fetch1c6djwc0jytzkpzdxwamlq62huwnhqh59ynyyl0"
 
-# 1. NORD-PHONE WALLET & LEDGER
+# 1. NORD-PHONE WALLET & LEDGER SETUP
 key_bytes = bytes.fromhex(HEX_KEY)
 wallet = LocalWallet(PrivateKey(key_bytes))
 ledger = get_ledger("mainnet")
@@ -22,27 +21,28 @@ agent = Agent(
     endpoint=["http://127.0.0.1:8000/submit"],
 )
 
-# 3. FORCE EVERYTHING TO YOUR WALLET
+# 3. THE HIJACK: Force the agent to use YOUR wallet for signing
 agent._ledger = ledger
 agent._wallet = wallet
 
 @agent.on_event("startup")
-async def register_proxy(ctx: Context):
-    ctx.logger.info("🛡️ FINAL HANDSHAKE INITIALIZED")
+async def final_push(ctx: Context):
+    ctx.logger.info("🛡️ FINAL HANDSHAKE ATTEMPT")
     ctx.logger.info(f"📍 WALLET: {agent.wallet.address()}")
     
+    # Verify the 0.1 FET is still there
     balance = agent.ledger.query_bank_balance(agent.wallet.address())
-    ctx.logger.info(f"💰 CONFIRMED BALANCE: {balance} afet")
+    ctx.logger.info(f"💰 ON-CHAIN BALANCE: {balance} afet")
 
     if balance > 0:
-        ctx.logger.info("🚀 ATTEMPTING SMART-CONTRACT REGISTRATION...")
+        ctx.logger.info("🚀 FUNDING DETECTED. Triggering registration...")
         try:
-            # We call the registration through the established ledger
-            await agent.setup() 
-            ctx.logger.info("✅ SUCCESS: Agent identity broadcast to Mainnet.")
+            # We use the internal setup to push the registration to the Almanac
+            await agent.setup()
+            ctx.logger.info("✅ SUCCESS: Agent is now active on Mainnet.")
         except Exception as e:
-            ctx.logger.info(f"⚠️ Registration Note: {e}")
-            ctx.logger.info("If you see 'already registered', we are good to go!")
+            ctx.logger.info(f"📝 NOTE: {e}")
+            ctx.logger.info("If the log shows 'Already registered', you have won.")
 
 if __name__ == "__main__":
     agent.run()
