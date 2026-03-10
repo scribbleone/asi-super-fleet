@@ -27,6 +27,7 @@ jobs:
         # --- 🛡️ THE SECRET BRIDGE ---
         env:
           AGENT_1_KEY: ${{ secrets.AGENT_1_KEY }}
+          AGENT_2_KEY: ${{ secrets.AGENT_2_KEY
         # ----------------------------
         run: python main.py
         
