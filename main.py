@@ -8,12 +8,10 @@ from cosmpy.crypto.keypairs import PrivateKey
 HEX_KEY = os.environ.get("AGENT_1_KEY")
 MY_HARD_WALLET = "fetch1c6djwc0jytzkpzdxwamlq62huwnhqh59ynyyl0"
 
-# 1. NORD-PHONE WALLET & LEDGER SETUP
 key_bytes = bytes.fromhex(HEX_KEY)
 wallet = LocalWallet(PrivateKey(key_bytes))
 ledger = get_ledger("mainnet")
 
-# 2. INITIALIZE AGENT
 agent = Agent(
     name="alpha_1",
     seed=HEX_KEY,
@@ -21,28 +19,25 @@ agent = Agent(
     endpoint=["http://127.0.0.1:8000/submit"],
 )
 
-# 3. THE HIJACK: Force the agent to use YOUR wallet for signing
+# HIJACK
 agent._ledger = ledger
 agent._wallet = wallet
 
 @agent.on_event("startup")
-async def final_push(ctx: Context):
-    ctx.logger.info("🛡️ FINAL HANDSHAKE ATTEMPT")
-    ctx.logger.info(f"📍 WALLET: {agent.wallet.address()}")
-    
-    # Verify the 0.1 FET is still there
-    balance = agent.ledger.query_bank_balance(agent.wallet.address())
-    ctx.logger.info(f"💰 ON-CHAIN BALANCE: {balance} afet")
+async def start_up(ctx: Context):
+    ctx.logger.info(f"🚀 ALPHA_1 ONLINE. Wallet: {agent.wallet.address()}")
+    ctx.logger.info(f"💰 STARTING BALANCE: {agent.ledger.query_bank_balance(agent.wallet.address())} afet")
 
-    if balance > 0:
-        ctx.logger.info("🚀 FUNDING DETECTED. Triggering registration...")
-        try:
-            # We use the internal setup to push the registration to the Almanac
-            await agent.setup()
-            ctx.logger.info("✅ SUCCESS: Agent is now active on Mainnet.")
-        except Exception as e:
-            ctx.logger.info(f"📝 NOTE: {e}")
-            ctx.logger.info("If the log shows 'Already registered', you have won.")
+# --- 🛰️ HEARTBEAT TASK ---
+@agent.on_interval(period=30.0)
+async def heartbeat(ctx: Context):
+    ctx.logger.info("💓 HEARTBEAT: Checking network connection...")
+    try:
+        # We try to query the ledger to ensure the connection is live
+        balance = agent.ledger.query_bank_balance(agent.wallet.address())
+        ctx.logger.info(f"✅ CONNECTION LIVE. Current Balance: {balance} afet")
+    except Exception as e:
+        ctx.logger.info(f"❌ CONNECTION DROPPED: {e}")
 
 if __name__ == "__main__":
     agent.run()
