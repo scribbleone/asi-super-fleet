@@ -1,35 +1,23 @@
 name: Super-Agent Pulse 24/7
 
 on:
-  workflow_dispatch:
   schedule:
-    # Runs every 6 hours to keep the pulse alive
-    - cron: '0 */6 * * *'
+    - cron: '0 */4 * * *' # Restarts every 4 hours automatically
+  workflow_dispatch:      # Allows you to start it manually
 
 jobs:
   run-fleet:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-
       - name: Install Dependencies
-        run: |
-          pip install uagents cosmpy
-
-      - name: Run Agent Test
-        # --- 🛡️ THE SECRET BRIDGE ---
+        run: pip install uagents cosmpy
+      - name: Run Fleet
         env:
           AGENT_1_KEY: ${{ secrets.AGENT_1_KEY }}
           AGENT_2_KEY: ${{ secrets.AGENT_2_KEY }}
-        # ----------------------------
         run: python main.py
-        
-        
-        
