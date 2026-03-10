@@ -10,33 +10,32 @@ if not HEX_KEY:
     print("❌ ERROR: AGENT_1_KEY not found in GitHub Secrets!")
     exit()
 
-# 1. We create the Identity object FIRST.
-# Identity.from_string(HEX_KEY) is the literal interpretation.
-# This is the "soul" that matches your phone's address.
-agent_identity = Identity.from_string(HEX_KEY)
-
-# 2. Initialize Agent with the FORCED identity.
-# By passing 'identity=agent_identity', we stop the library from 
-# inventing its own 'fetch1ey45...' address for the Almanac.
+# 1. Start the agent with a placeholder. 
+# We use seed=None or a dummy string because we are about to override it.
 agent = Agent(
     name="alpha_1",
-    identity=agent_identity,
     port=8000,
     endpoint=["http://127.0.0.1:8000/submit"],
 )
 
+# 2. THE BRAIN SURGERY
+# We force the identity to be derived directly from your Hex Key string.
+# This is the 1:1 match that bypasses the library's derivation math.
+agent._identity = Identity.from_string(HEX_KEY)
+agent._address = agent._identity.address
+
 @agent.on_event("startup")
 async def verify_identity(ctx: Context):
-    ctx.logger.info("🛡️ TOTAL LOCKDOWN ACTIVE")
-    ctx.logger.info(f"📍 WALLET IN USE: {agent.address}")
+    ctx.logger.info("🛡️ MANUAL IDENTITY LOCK ACTIVE")
+    ctx.logger.info(f"📍 AGENT ADDRESS: {agent.address}")
     
     if agent.address == MY_HARD_WALLET:
-        ctx.logger.info("✅ SUCCESS: 1:1 MATCH FOUND.")
-        ctx.logger.info("--- ACTION REQUIRED ---")
-        ctx.logger.info(f"You can now safely send FET to {agent.address}")
+        ctx.logger.info("✅ SUCCESS: 1:1 MATCH!")
+        ctx.logger.info("--- NETWORK CHECK ---")
+        ctx.logger.info(f"The Almanac will now use {agent.address} for registration.")
     else:
-        ctx.logger.info("❌ MISMATCH DETECTED.")
-        ctx.logger.info(f"Agent is still trying to be: {agent.address}")
+        ctx.logger.info("❌ OVERRIDE FAILED.")
+        ctx.logger.info(f"Agent is still: {agent.address}")
 
 if __name__ == "__main__":
     agent.run()
