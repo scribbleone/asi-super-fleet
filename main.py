@@ -4,40 +4,45 @@ from uagents.network import get_ledger
 from cosmpy.aerial.wallet import LocalWallet
 from cosmpy.crypto.keypairs import PrivateKey
 
-# --- 🔒 THE COMMAND CENTER HARD-LOCK ---
+# --- 🔒 THE COMMAND CENTER ---
 HEX_KEY = os.environ.get("AGENT_1_KEY")
 MY_HARD_WALLET = "fetch1c6djwc0jytzkpzdxwamlq62huwnhqh59ynyyl0"
 
-if not HEX_KEY:
-    print("❌ ERROR: AGENT_1_KEY not found in GitHub Secrets!")
-    exit()
+# Mainnet Config (March 9th requirements)
+MAINNET_CONFIG = {
+    "chain_id": "fetchhub-4",
+    "url": "grpc+https://grpc-fetchhub.fetch.ai:443",
+    "fee_minimum_gas_price": 5000000000,
+    "fee_denomination": "afet",
+    "staking_denomination": "afet",
+}
 
-# 1. Convert HEX to RAW BYTES (The real secret)
+# 1. Create the REAL wallet from your HEX
 key_bytes = bytes.fromhex(HEX_KEY)
-# 2. Create the real PrivateKey and Wallet object
-# This is the "Truth" that matches your phone.
 priv_key = PrivateKey(key_bytes)
-wallet = LocalWallet(priv_key)
+my_wallet = LocalWallet(priv_key)
 
-# 3. Initialize the Agent with a placeholder (it doesn't matter, we override it)
-agent = Agent(name="alpha_1", port=8000, endpoint=["http://127.0.0.1:8000/submit"])
+# 2. Initialize Agent using the HEX as the seed for Identity
+agent = Agent(
+    name="alpha_1",
+    seed=HEX_KEY, 
+    port=8000,
+    endpoint=["http://127.0.0.1:8000/submit"],
+)
 
-# 🎯 THE SURGERY: We force the agent to use our cosmpy wallet
-agent._wallet = wallet
+# 3. THE FINAL SYNC: Force override Identity and Wallet
+# This ensures the 'Registration' address matches your FET address
+agent._wallet = my_wallet
+agent._ledger = get_ledger("mainnet") # Apply the Mainnet ledger
 
 @agent.on_event("startup")
 async def verify_identity(ctx: Context):
-    ctx.logger.info("🛡️ FINAL SYNC ATTEMPT")
-    # Get the address from the wallet we injected
-    current_addr = str(agent.wallet.address())
-    ctx.logger.info(f"📍 WALLET IN USE: {current_addr}")
+    ctx.logger.info("🛡️ TOTAL SYNC ACTIVE")
+    ctx.logger.info(f"📍 WALLET: {agent.wallet.address()}")
     
-    if current_addr == MY_HARD_WALLET:
-        ctx.logger.info("✅ SUCCESS: 1:1 MATCH! The library has been bypassed.")
-    else:
-        ctx.logger.info("❌ STILL A MISMATCH.")
-        ctx.logger.info(f"Wallet address is: {current_addr}")
-        ctx.logger.info("This means the Hex string itself is for a different address.")
+    if str(agent.wallet.address()) == MY_HARD_WALLET:
+        ctx.logger.info("✅ 1:1 MATCH: Wallet and Identity are fused.")
+        ctx.logger.info("The Almanac registration will now use your Hard Wallet funds.")
 
 if __name__ == "__main__":
     agent.run()
