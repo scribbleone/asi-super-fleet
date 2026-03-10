@@ -13,37 +13,33 @@ if not HEX_KEY:
     print("❌ ERROR: AGENT_1_KEY not found in GitHub Secrets!")
     exit()
 
-# 1. Force the Identity to be derived 1:1 from your HEX
-# We use from_string to ensure no extra derivation math is added
-forced_identity = Identity.from_string(HEX_KEY)
+# 1. Create the REAL Identity from your HEX string
+# This matches the math of your Nord phone wallet
+real_identity = Identity.from_string(HEX_KEY)
 
-# 2. Setup the Nord-Phone Wallet math
-key_bytes = bytes.fromhex(HEX_KEY)
-wallet = LocalWallet(PrivateKey(key_bytes))
-
-# 3. Initialize Agent with the FORCED identity
-# By passing 'identity', the Almanac registration is forced to use your key
+# 2. Start the Agent with no seed (it will make a random one, which we then delete)
 agent = Agent(
     name="alpha_1",
-    identity=forced_identity,
     port=8000,
     endpoint=["http://127.0.0.1:8000/submit"],
 )
 
-# 4. Final Ledger & Wallet Bridge
-agent._wallet = wallet
+# 3. THE BRAIN SURGERY: Force-overwrite the Agent's identity
+# This kills the 'fetch1ey45...' ghost wallet once and for all.
+agent._identity = real_identity
+agent._address = real_identity.address
+agent._wallet = LocalWallet(PrivateKey(bytes.fromhex(HEX_KEY)))
 agent._ledger = get_ledger("mainnet")
 
 @agent.on_event("startup")
 async def verify_identity(ctx: Context):
-    ctx.logger.info("🛡️ TOTAL GLOBAL LOCKDOWN")
-    ctx.logger.info(f"📍 WALLET: {agent.wallet.address()}")
-    ctx.logger.info(f"📍 REGISTRATION ADDR: {agent.address}")
+    ctx.logger.info("🛡️ COMMAND CENTER LOCKDOWN")
+    ctx.logger.info(f"📍 WALLET ADDRESS: {agent.wallet.address()}")
     
     if str(agent.wallet.address()) == MY_HARD_WALLET:
-        ctx.logger.info("✅ SUCCESS: 1:1 MATCH PERMANENTLY LOCKED.")
+        ctx.logger.info("✅ SUCCESS: 1:1 MATCH! No more ghost wallets.")
     else:
-        ctx.logger.info("❌ WARNING: ADDRESS DRIFT DETECTED.")
+        ctx.logger.info("❌ ERROR: Identity swap failed.")
 
 if __name__ == "__main__":
     agent.run()
