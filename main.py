@@ -10,32 +10,27 @@ if not HEX_KEY:
     print("❌ ERROR: AGENT_1_KEY not found in GitHub Secrets!")
     exit()
 
-# 1. Start the agent with a placeholder. 
-# We use seed=None or a dummy string because we are about to override it.
+# This is the "Secret Sauce." 
+# We don't let the Agent generate its own seed. 
+# We pass the HEX_KEY directly as the seed.
 agent = Agent(
     name="alpha_1",
+    seed=HEX_KEY, # This is where the 1:1 link happens
     port=8000,
     endpoint=["http://127.0.0.1:8000/submit"],
 )
 
-# 2. THE BRAIN SURGERY
-# We force the identity to be derived directly from your Hex Key string.
-# This is the 1:1 match that bypasses the library's derivation math.
-agent._identity = Identity.from_string(HEX_KEY)
-agent._address = agent._identity.address
-
 @agent.on_event("startup")
 async def verify_identity(ctx: Context):
-    ctx.logger.info("🛡️ MANUAL IDENTITY LOCK ACTIVE")
-    ctx.logger.info(f"📍 AGENT ADDRESS: {agent.address}")
+    ctx.logger.info("🛡️ FINAL IDENTITY VERIFICATION")
+    # This prints the Fetch address associated with the agent's identity
+    ctx.logger.info(f"📍 WALLET ADDRESS: {agent.wallet.address()}")
     
-    if agent.address == MY_HARD_WALLET:
+    if str(agent.wallet.address()) == MY_HARD_WALLET:
         ctx.logger.info("✅ SUCCESS: 1:1 MATCH!")
-        ctx.logger.info("--- NETWORK CHECK ---")
-        ctx.logger.info(f"The Almanac will now use {agent.address} for registration.")
     else:
-        ctx.logger.info("❌ OVERRIDE FAILED.")
-        ctx.logger.info(f"Agent is still: {agent.address}")
+        ctx.logger.info("❌ MISMATCH DETECTED.")
+        ctx.logger.info(f"Library is pointing to: {agent.wallet.address()}")
 
 if __name__ == "__main__":
     agent.run()
