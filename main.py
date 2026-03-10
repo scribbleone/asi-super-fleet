@@ -1,6 +1,7 @@
 import os
 from uagents import Agent, Context
-from uagents.crypto import Identity
+from cosmpy.aerial.wallet import LocalWallet
+from cosmpy.crypto.keypairs import PrivateKey
 
 # --- 🔒 THE COMMAND CENTER ---
 HEX_KEY = os.environ.get("AGENT_1_KEY")
@@ -10,27 +11,35 @@ if not HEX_KEY:
     print("❌ ERROR: AGENT_1_KEY not found in GitHub Secrets!")
     exit()
 
-# This is the "Secret Sauce." 
-# We don't let the Agent generate its own seed. 
-# We pass the HEX_KEY directly as the seed.
+# 1. RAW CRYPTO: Create the exact wallet that matches your Nord phone
+# We turn the HEX string into actual bytes, then a PrivateKey object
+key_bytes = bytes.fromhex(HEX_KEY)
+wallet = LocalWallet(PrivateKey(key_bytes))
+
+# 2. Start the Agent with a dummy seed (we are going to overwrite its brain anyway)
 agent = Agent(
     name="alpha_1",
-    seed=HEX_KEY, # This is where the 1:1 link happens
+    seed="override_placeholder",
     port=8000,
     endpoint=["http://127.0.0.1:8000/submit"],
 )
 
+# 3. THE INJECTION: We manually replace the agent's wallet and address
+# This forces the agent to use your 'fetch1c6dj...' for EVERYTHING
+agent._wallet = wallet
+agent._address = str(wallet.address())
+
 @agent.on_event("startup")
 async def verify_identity(ctx: Context):
-    ctx.logger.info("🛡️ FINAL IDENTITY VERIFICATION")
-    # This prints the Fetch address associated with the agent's identity
-    ctx.logger.info(f"📍 WALLET ADDRESS: {agent.wallet.address()}")
+    ctx.logger.info("🛡️ RAW ENGINE INJECTION ACTIVE")
+    ctx.logger.info(f"📍 CURRENT WALLET: {agent.address}")
     
-    if str(agent.wallet.address()) == MY_HARD_WALLET:
-        ctx.logger.info("✅ SUCCESS: 1:1 MATCH!")
+    if agent.address == MY_HARD_WALLET:
+        ctx.logger.info("✅ SUCCESS: 1:1 MATCH! The magician's trick has failed.")
+        ctx.logger.info("The agent is now permanently locked to your wallet.")
     else:
-        ctx.logger.info("❌ MISMATCH DETECTED.")
-        ctx.logger.info(f"Library is pointing to: {agent.wallet.address()}")
+        ctx.logger.info("❌ STILL MISMATCHED.")
+        ctx.logger.info(f"The address is still showing as: {agent.address}")
 
 if __name__ == "__main__":
     agent.run()
