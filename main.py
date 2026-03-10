@@ -1,5 +1,6 @@
 import os
 from uagents import Agent, Context
+from uagents.network import get_ledger
 from cosmpy.aerial.wallet import LocalWallet
 from cosmpy.crypto.keypairs import PrivateKey
 
@@ -11,13 +12,14 @@ if not HEX_KEY:
     print("❌ ERROR: AGENT_1_KEY not found in GitHub Secrets!")
     exit()
 
-# 1. THE NORD-PHONE MATH: Convert Hex to the exact PrivateKey object
-# This ensures we are using the raw 'Identity' without the library's flavor.
+# 1. THE NORD-PHONE MATH (Confirmed Match ✅)
 key_bytes = bytes.fromhex(HEX_KEY)
-priv_key = PrivateKey(key_bytes)
-my_wallet = LocalWallet(priv_key)
+wallet = LocalWallet(PrivateKey(key_bytes))
 
-# 2. Start the Agent
+# 2. Set up the REAL Mainnet Ledger
+ledger = get_ledger("mainnet")
+
+# 3. Start the Agent
 agent = Agent(
     name="alpha_1",
     seed=HEX_KEY, 
@@ -25,23 +27,20 @@ agent = Agent(
     endpoint=["http://127.0.0.1:8000/submit"],
 )
 
-# 3. THE HARD-WIRE: Replace the agent's internal wallet with our Nord-math wallet
-# We use agent.wallet (the property) to force it to look at our LocalWallet
-agent._wallet = my_wallet
+# 4. THE TOTAL OVERRIDE
+# We force the wallet AND the ledger to use your hard-wallet settings
+agent._wallet = wallet
+agent._ledger = ledger
 
 @agent.on_event("startup")
 async def verify_identity(ctx: Context):
-    ctx.logger.info("🛡️ NORD-WALLET SYNC ACTIVE")
-    # We ask the WALLET directly for its address, not the Agent.
-    actual_addr = str(agent.wallet.address())
-    ctx.logger.info(f"📍 WALLET IN USE: {actual_addr}")
+    ctx.logger.info("🛡️ TOTAL FLEET SYNC ACTIVE")
+    ctx.logger.info(f"📍 WALLET: {agent.wallet.address()}")
     
-    if actual_addr == MY_HARD_WALLET:
-        ctx.logger.info("✅ SUCCESS: 1:1 MATCH! The magician is out of tricks.")
-        ctx.logger.info(f"You can now safely fund {actual_addr}")
-    else:
-        ctx.logger.info("❌ STILL DRIFTING.")
-        ctx.logger.info(f"Math produced: {actual_addr}")
+    if str(agent.wallet.address()) == MY_HARD_WALLET:
+        ctx.logger.info("✅ SUCCESS: 1:1 MATCH PERMANENTLY LOCKED.")
+        ctx.logger.info(f"Network: {agent.ledger.network_config.chain_id}")
+        ctx.logger.info("Ready for 0.05 FET funding.")
 
 if __name__ == "__main__":
     agent.run()
