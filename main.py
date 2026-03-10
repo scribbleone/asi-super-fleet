@@ -11,35 +11,37 @@ if not HEX_KEY:
     print("❌ ERROR: AGENT_1_KEY not found in GitHub Secrets!")
     exit()
 
-# 1. RAW CRYPTO: Create the exact wallet that matches your Nord phone
-# We turn the HEX string into actual bytes, then a PrivateKey object
+# 1. THE NORD-PHONE MATH: Convert Hex to the exact PrivateKey object
+# This ensures we are using the raw 'Identity' without the library's flavor.
 key_bytes = bytes.fromhex(HEX_KEY)
-wallet = LocalWallet(PrivateKey(key_bytes))
+priv_key = PrivateKey(key_bytes)
+my_wallet = LocalWallet(priv_key)
 
-# 2. Start the Agent with a dummy seed (we are going to overwrite its brain anyway)
+# 2. Start the Agent
 agent = Agent(
     name="alpha_1",
-    seed="override_placeholder",
+    seed=HEX_KEY, 
     port=8000,
     endpoint=["http://127.0.0.1:8000/submit"],
 )
 
-# 3. THE INJECTION: We manually replace the agent's wallet and address
-# This forces the agent to use your 'fetch1c6dj...' for EVERYTHING
-agent._wallet = wallet
-agent._address = str(wallet.address())
+# 3. THE HARD-WIRE: Replace the agent's internal wallet with our Nord-math wallet
+# We use agent.wallet (the property) to force it to look at our LocalWallet
+agent._wallet = my_wallet
 
 @agent.on_event("startup")
 async def verify_identity(ctx: Context):
-    ctx.logger.info("🛡️ RAW ENGINE INJECTION ACTIVE")
-    ctx.logger.info(f"📍 CURRENT WALLET: {agent.address}")
+    ctx.logger.info("🛡️ NORD-WALLET SYNC ACTIVE")
+    # We ask the WALLET directly for its address, not the Agent.
+    actual_addr = str(agent.wallet.address())
+    ctx.logger.info(f"📍 WALLET IN USE: {actual_addr}")
     
-    if agent.address == MY_HARD_WALLET:
-        ctx.logger.info("✅ SUCCESS: 1:1 MATCH! The magician's trick has failed.")
-        ctx.logger.info("The agent is now permanently locked to your wallet.")
+    if actual_addr == MY_HARD_WALLET:
+        ctx.logger.info("✅ SUCCESS: 1:1 MATCH! The magician is out of tricks.")
+        ctx.logger.info(f"You can now safely fund {actual_addr}")
     else:
-        ctx.logger.info("❌ STILL MISMATCHED.")
-        ctx.logger.info(f"The address is still showing as: {agent.address}")
+        ctx.logger.info("❌ STILL DRIFTING.")
+        ctx.logger.info(f"Math produced: {actual_addr}")
 
 if __name__ == "__main__":
     agent.run()
